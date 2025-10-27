@@ -1,0 +1,15 @@
+{
+  "train_split": 10000,
+  "initial_projection": "t-SNE",
+  "schema": {
+    "type": {}
+  },
+  "rendering": {
+    "dot_color": null
+  },
+  "search": {
+    "simple": true,
+    "advanced": true,
+    "by": ["name"]
+  }
+}

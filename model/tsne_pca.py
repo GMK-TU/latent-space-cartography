@@ -41,16 +41,16 @@ if __name__ == '__main__':
             pca = PCA(n_components=50)
             pca_res = pca.fit_transform(dset)
             total_v = np.sum(pca.explained_variance_ratio_)
-            print 'PCA for latent space {} explains {} total variation'.format(latent_dim, total_v)
+            print('PCA for latent space {} explains {} total variation'.format(latent_dim, total_v))
 
             dim = 2
             n_iter = 1000
             time_start = time.time()
-            print 't-SNE starts! Latent dimensions: {}, perplexity: {}'.format(latent_dim, perp)
+            print('t-SNE starts! Latent dimensions: {}, perplexity: {}'.format(latent_dim, perp))
             tsne = TSNE(n_components=dim, verbose=1, perplexity=perp, n_iter=n_iter)
             # shape: (length, n_components), each point is a float
             d = tsne.fit_transform(pca_res)
-            print 't-SNE done! Time elapsed: {} s'.format(time.time()-time_start)
+            print('t-SNE done! Time elapsed: {} s'.format(time.time()-time_start))
             log.append([latent_dim, perp, tsne.kl_divergence_, n_iter])
 
             f.close()

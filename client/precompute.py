@@ -52,8 +52,8 @@ class RandomCosine (object):
         cs = cs[np.nonzero(cs)]
 
         score = np.mean(cs)
-        print 'average {}, max {}, min {}, std {}'.format(round(score, 2), \
-            round(np.amax(cs), 2),  round(np.amin(cs), 2), round(np.std(cs), 2))
+        print('average {}, max {}, min {}, std {}'.format(round(score, 2),
+            round(np.amax(cs), 2),  round(np.amin(cs), 2), round(np.std(cs), 2)))
 
         return cs
 

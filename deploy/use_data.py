@@ -2,7 +2,7 @@
 
 import os
 import argparse
-import urllib2
+import urllib.request
 import zipfile
 import shutil
 
@@ -37,7 +37,7 @@ def connect_db ():
 
 # remove files
 def remove_files (fs):
-    print 'Deleting files ...'
+    print('Deleting files ...')
 
     for f in fs:
         f = fs[f]
@@ -46,35 +46,35 @@ def remove_files (fs):
                 os.remove(f)
             else:
                 shutil.rmtree(f)
-            print f
+            print(f)
 
-    print bcolors.OKGREEN + 'Delete files: done.' + bcolors.ENDC
+    print(bcolors.OKGREEN + 'Delete files: done.' + bcolors.ENDC)
 
 # precompute
 def compute (dset):
-    print 'Performing precomputation ...\n'
+    print('Performing precomputation ...\n')
     from precompute import RandomCosine
     from config_data import dims
 
     rc = RandomCosine(dset, dims)
     rc.compute()
 
-    print bcolors.OKGREEN + '\nPrecompute: success!\n' + bcolors.ENDC
+    print(bcolors.OKGREEN + '\nPrecompute: success!\n' + bcolors.ENDC)
 
 # drop all tables associated with dset
 def drop_tables (dset):
     conn, cursor = connect_db()
-    print 'SQLite connected, dropping tables ...'
+    print('SQLite connected, dropping tables ...')
 
     ts = ['meta', 'group', 'vector']
     for t in ts:
         q = 'DROP TABLE IF EXISTS {}_{};'.format(dset, t)
-        print q
+        print(q)
         cursor.execute(q)
     conn.commit()
     conn.close()
 
-    print bcolors.OKGREEN + 'Remove database tables: done.' + bcolors.ENDC
+    print(bcolors.OKGREEN + 'Remove database tables: done.' + bcolors.ENDC)
 
 # create tables and import meta
 # this will drop the original meta table!!
@@ -82,7 +82,7 @@ def create_tables (dset, p_meta):
     import csv
 
     conn, cursor = connect_db()
-    print 'SQLite connected, creating tables ...'
+    print('SQLite connected, creating tables ...')
 
     q1 = '''
     CREATE TABLE IF NOT EXISTS `{}_group` (
@@ -93,7 +93,7 @@ def create_tables (dset, p_meta):
         `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);
     '''.format(dset)
     cursor.execute(q1)
-    print q1
+    print(q1)
 
     q2 = '''
     CREATE TABLE IF NOT EXISTS `{}_vector` (
@@ -105,28 +105,28 @@ def create_tables (dset, p_meta):
         `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);
     '''.format(dset)
     cursor.execute(q2)
-    print q2
+    print(q2)
 
-    with open(p_meta, 'rb') as f:
+    with open(p_meta, 'r', encoding='UTF-8') as f:
         dr = csv.DictReader(f)
         meta = [i for i in dr]
 
-        cols = meta[0].keys()
+        cols = list(meta[0].keys())
 
         # check required fields
         rq = ['i', 'name']
         for col in rq:
             if col not in cols:
-                print bcolors.WARNING + \
+                print(bcolors.WARNING + \
                     'Error: required field {} not found in meta.csv'.format(col) + \
-                    bcolors.ENDC
+                    bcolors.ENDC)
                 exit(0)
             cols.remove(col)
 
         # drop previous meta table
         q3 = 'DROP TABLE IF EXISTS {}_meta;'.format(dset)
         cursor.execute(q3)
-        print q3
+        print(q3)
 
         # create table
         q3 = 'CREATE TABLE IF NOT EXISTS `{}_meta` (\n'.format(dset)
@@ -136,7 +136,7 @@ def create_tables (dset, p_meta):
             q3 += '\t`{}` varchar(255) DEFAULT NULL,\n'.format(col)
         q3 += '\tPRIMARY KEY (`i`));\n'
         cursor.execute(q3)
-        print q3
+        print(q3)
 
         # insert data
         to_db = []
@@ -148,22 +148,22 @@ def create_tables (dset, p_meta):
         marks = '?,' * (len(cols) + 2)
         s_col = 'i,name,{}'.format(','.join(cols)) if len(cols) else 'i, name'
         q4 = 'INSERT INTO `{}_meta` ({}) VALUES ({});'.format(dset, s_col, marks[:-1])
-        print q4
+        print(q4)
 
         conn.text_factory = str
         cursor.executemany(q4, to_db)
         conn.commit()
         conn.close()
 
-    print bcolors.OKGREEN + '\nImport into database: success!\n' + bcolors.ENDC
+    print(bcolors.OKGREEN + '\nImport into database: success!\n' + bcolors.ENDC)
 
 # download and unzip data
 def download (dset):
     # check if we have already an existing directory
     pout = os.path.join(P_DATA, dset)
     if os.path.exists(pout):
-        print '{} already exists. Do you want to overwrite?'.format(dset)
-        s = raw_input('(y/n): ')
+        print('{} already exists. Do you want to overwrite?'.format(dset))
+        s = urllib.request.raw_input('(y/n): ')
         if s.startswith('y'):
             shutil.rmtree(pout)
         else:
@@ -171,11 +171,11 @@ def download (dset):
     os.makedirs(pout)
 
     fn = '{}_data_temp.zip'.format(dset) # temporary zip file
-    u = urllib2.urlopen(urls[dset])
+    u = urllib.urlopen(urls[dset])
     f = open(fn, 'wb')
     meta = u.info()
     fsize = int(meta.getheaders("Content-Length")[0])
-    print 'Downloading ...'
+    print('Downloading ...')
 
     # display progress
     block = 8192
@@ -189,7 +189,7 @@ def download (dset):
         f.write(buffer)
         status = r"%10d  [%3.2f%%]" % (total, total * 100. / fsize)
         status = status + chr(8) * (len(status) + 1)
-        print status,
+        print(status)
 
     f.close()
 
@@ -204,9 +204,9 @@ def download (dset):
 # check if the dataset can be downloaded
 def check_download (dset):
     if dset not in urls:
-        print 'Only the following datasets are available for download:'
+        print('Only the following datasets are available for download:')
         for key in urls:
-            print key
+            print(key)
         exit(1)
 
 if __name__ == '__main__':
@@ -236,8 +236,8 @@ if __name__ == '__main__':
 
     # delete!!
     if args.remove:
-        print 'Do you want to permenantly delete all data associated with {}?'.format(dset)
-        print 'Type CONFIRM to confirm:'
+        print('Do you want to permanently delete all data associated with {}?'.format(dset))
+        print('Type CONFIRM to confirm:')
         s = raw_input('> ')
 
         if s.startswith('CONFIRM'):
@@ -259,11 +259,11 @@ if __name__ == '__main__':
             if i == 'json':
                 # copy default client config
                 shutil.copyfile(P_UI_CFG + 'config_default.json', f)
-                print bcolors.WARNING + 'Client config not found'
-                print 'Creating a default config in {}'.format(f) + bcolors.ENDC
+                print(bcolors.WARNING + 'Client config not found')
+                print('Creating a default config in {}'.format(f) + bcolors.ENDC)
             else:
-                print bcolors.WARNING + \
-                    'Error: required file not found\n  {}'.format(f) + bcolors.ENDC
+                print(bcolors.WARNING + \
+                    'Error: required file not found\n  {}'.format(f) + bcolors.ENDC)
                 exit(1)
 
     # copy config
@@ -275,9 +275,9 @@ if __name__ == '__main__':
         # check meta csv
         p_meta = os.path.join(REQ_FS['data'], 'meta.csv')
         if not os.path.exists(p_meta):
-            print bcolors.WARNING + \
+            print(bcolors.WARNING + \
                 'Error: metadata file not found\n  {}'.format(p_meta) + \
-                bcolors.ENDC
+                bcolors.ENDC)
             exit(1)
 
         # create database tables
@@ -291,5 +291,5 @@ if __name__ == '__main__':
         download(dset)
 
     # hint
-    print bcolors.OKBLUE + 'Dataset "{}" is ready\n'.format(dset) + bcolors.ENDC
-    print 'Next: start the server via\n  python server.py' 
+    print(bcolors.OKBLUE + 'Dataset "{}" is ready\n'.format(dset) + bcolors.ENDC)
+    print('Next: start the server via\n  python server.py')

@@ -4,6 +4,7 @@
 import os
 import h5py
 import numpy as np
+import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
 # for absolute path
@@ -19,8 +20,11 @@ class RandomCosine (object):
     # read latent space
     def read_ls (self, latent_dim):
         rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(self.dset, latent_dim))
-        with h5py.File(rawpath, 'r') as f:
-            X = np.asarray(f['latent'])
+        df = pd.read_hdf(rawpath, key="latent")
+        X = np.copy(df.drop(columns=['word']))
+
+        #with h5py.File(rawpath, 'r') as f:
+        #    X = np.asarray(f['latent'])
         return X
 
     # remove previous result
@@ -52,8 +56,8 @@ class RandomCosine (object):
         cs = cs[np.nonzero(cs)]
 
         score = np.mean(cs)
-        print 'average {}, max {}, min {}, std {}'.format(round(score, 2), \
-            round(np.amax(cs), 2),  round(np.amin(cs), 2), round(np.std(cs), 2))
+        print('average {}, max {}, min {}, std {}'.format(round(score, 2),
+            round(np.amax(cs), 2),  round(np.amin(cs), 2), round(np.std(cs), 2)))
 
         return cs
 

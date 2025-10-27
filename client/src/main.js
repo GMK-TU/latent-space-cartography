@@ -2,6 +2,7 @@ import Vue from 'vue'
 import App from './App.vue'
 import VueResource from 'vue-resource'
 import BootstrapVue from 'bootstrap-vue'
+import 'font-awesome/css/font-awesome.css';
 import router from './router'
 import {log_debug, setConfig} from "./controllers/config"
 import http from 'axios'

@@ -250,7 +250,7 @@
   import VueLoading from 'vue-loading-template'
   import ListTopSignal from './ListTopSignal.vue'
   import * as d3 from 'd3'
-  import { saveAs } from 'file-saver/FileSaver'
+  import { saveAs } from 'file-saver'
   import ListKnn from './ListKnn.vue'
   import Histogram from '../controllers/analogy/histogram'
 

@@ -11,13 +11,15 @@ import h5py
 import json
 import csv
 import os
+import pandas as pd
 import time
+from pathlib import Path
 
 # dataset config
-from config_glove_6b import *
+from config_glove import *
 
 # path to the stored model
-base = '/home/yliu0/data/{}/'.format(dset)
+base = f'{Path(__file__).parent}\\..\\deploy\\data\\{dset}\\'
 
 if __name__ == '__main__':
     log = [['Latent Dimensions', 'Perplexity', 'KL Divergence', 'Iterations']]
@@ -25,6 +27,9 @@ if __name__ == '__main__':
         for perp in [5, 10, 30, 50, 100]:
             # input path
             inpath = base + 'latent/latent{}.h5'.format(latent_dim)
+
+            if not os.path.isfile(inpath):
+                continue
 
             # output path
             tsne_base = base + 'tsne'
@@ -40,28 +45,29 @@ if __name__ == '__main__':
                 os.remove(json_path)
 
             res = []
-            f = h5py.File(inpath, 'r')
-            dset = f['latent']
+            #f = h5py.File(inpath, 'r')
+            #dset = f['latent']
+            dset = pd.read_hdf(inpath, key="latent")
 
             dim = 2
             n_iter = 1000
             time_start = time.time()
-            print 't-SNE starts! Latent dimensions: {}, perplexity: {}'.format(latent_dim, perp)
+            print('t-SNE starts! Latent dimensions: {}, perplexity: {}'.format(latent_dim, perp))
 
             if metric == 'cosine':
-                X = np.copy(dset)
+                X = dset.filter(regex=r"^c\d+$").to_numpy(dtype=np.float32)  # shape: (n_words, 50)
                 dists = pairwise_distances(X, X, metric='cosine')
-                tsne = TSNE(n_components=dim, verbose=1, perplexity=perp, n_iter=n_iter, metric='precomputed')
+                tsne = TSNE(n_components=dim, verbose=1, perplexity=perp)
                 d = tsne.fit_transform(dists)
             else:
-                tsne = TSNE(n_components=dim, verbose=1, perplexity=perp, n_iter=n_iter)
+                tsne = TSNE(n_components=dim, verbose=1, perplexity=perp)
                 d = tsne.fit_transform(dset)
 
             # shape of d: (length, n_components), each point is a float
-            print 't-SNE done! Time elapsed: {} s'.format(time.time()-time_start)
+            print('t-SNE done! Time elapsed: {} s'.format(time.time()-time_start))
             log.append([latent_dim, perp, tsne.kl_divergence_, n_iter])
 
-            f.close()
+            #f.close()
             f = h5py.File(h5_path, 'w')
             dset = f.create_dataset('tsne', (1, dim), 
                     chunks=(1, dim),
@@ -84,7 +90,7 @@ if __name__ == '__main__':
                 json.dump(res, outfile)
     
     # write log to CSV
-    log_path = base + 'tsne/log{}.csv'.format(int(time.time()) % 100000)
-    with open(log_path, 'wb') as csvf:
-        wr = csv.writer(csvf)
-        wr.writerows(log)
+#    log_path = base + 'tsne/log{}.csv'.format(int(time.time()) % 100000)
+#    with open(log_path, 'wb') as csvf:
+#       wr = csv.writer(csvf)
+#        wr.writerows(log)

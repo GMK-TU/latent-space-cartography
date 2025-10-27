@@ -14,6 +14,7 @@ import os
 import time
 import csv
 import shutil
+import pandas as pd
 from PIL import Image
 
 # ugly way to import a file from another directory ...
@@ -21,7 +22,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../model'))
 import model
 
 from flask import Flask, send_from_directory, send_file
-from flask import request, jsonify
+from flask import request, jsonify, abort
 import sqlite3
 
 # dataset we're working with
@@ -51,7 +52,7 @@ class DB:
             cursor.execute(query)
         except: #TODO: handle specific error
             self.conn = sqlite3.connect(self.filename)
-            print 'sqlite3 connected!'
+            print('sqlite3 connected!')
             cursor = self.conn.cursor()
             cursor.execute(query)
         return cursor, self.conn
@@ -59,7 +60,7 @@ class DB:
     def safe_commit(self, conn, cursor):
         try:
             conn.commit()
-        except sqlite3.Error, e:
+        except sqlite3.Error as e:
             conn.rollback()
         finally:
             cursor.close()
@@ -91,9 +92,13 @@ def load_model (latent_dim):
 # read latent space
 def read_ls (latent_dim):
     rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    with h5py.File(rawpath, 'r') as f:
-        X = np.asarray(f['latent'])
+    df = pd.read_hdf(rawpath, key="latent")
+    X = np.copy(df.drop(columns=['word']))
+
+    #    with h5py.File(rawpath, 'r') as f:
+#        X = np.asarray(f['latent'])
     return X
+
 
 def read_raw ():
     p_raw = abs_path('./data/{}/raw.h5'.format(dset))
@@ -207,7 +212,7 @@ def _project_axis (X, axis):
 
     # v is a row vector of shape (1, latent_dim)
     if v.shape[1] != latent_dim:
-        print 'Could not project to axis because axis and latent dimension shape mismatch.'
+        print('Could not project to axis because axis and latent dimension shape mismatch.')
         return jsonify({'status': 'fail'}), 200
 
     # 2. center X to mean
@@ -223,19 +228,19 @@ def _project_axis (X, axis):
     y = pca.components_[0]
     va = pca.explained_variance_ratio_
 
-    print 'Explained variance ratio: {}'.format(va)
+    print('Explained variance ratio: {}'.format(va))
 
     U = np.append(v, y.reshape(1, -1), axis=0)
     X_transformed = np.dot(X, U.T)
 
     # compute the variation of v
     # FIXME: the variance doesn't seem correct
-    print 'Explained variance: {}'.format(pca.explained_variance_)
+    print('Explained variance: {}'.format(pca.explained_variance_))
     total_var = pca.explained_variance_.sum()
-    print 'Total variance: {}'.format(total_var)
+    print('Total variance: {}'.format(total_var))
     s = np.dot(X, v.T)
     s = np.sum(s ** 2) / (n - 1)
-    print 'Variance of x axis: {}, {}%'.format(s, s / total_var)
+    print('Variance of x axis: {}, {}%'.format(s, s / total_var))
 
     return X_transformed, U, mean_
 
@@ -458,17 +463,21 @@ def get_pca ():
     indices = np.asarray(request.json['indices'], dtype=np.int16)
 
     rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    with h5py.File(rawpath, 'r') as f:
-        raw = np.asarray(f['latent'])
-        length = indices.shape[0]
-        if length > 0:
-            raw = raw[indices]
 
-        pca = PCA(n_components = pca_dim)
-        d = pca.fit_transform(raw)
-        va = pca.explained_variance_ratio_
+    df = pd.read_hdf(rawpath, key="latent")
+    raw = np.copy(df.drop(columns=['word']))
 
-    print 'Explained variation per principal component: {}'.format(va)
+    #with h5py.File(rawpath, 'r') as f:
+     #   raw = np.asarray(f['latent'])
+    length = indices.shape[0]
+    if length > 0:
+        raw = raw[indices]
+
+    pca = PCA(n_components = pca_dim)
+    d = pca.fit_transform(raw)
+    va = pca.explained_variance_ratio_
+
+    print('Explained variation per principal component: {}'.format(va))
 
     return jsonify({'data': d.tolist(), 'variation': va.tolist()}), 200
 
@@ -547,8 +556,12 @@ def apply_analogy ():
 
     # read latent space
     rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    with h5py.File(rawpath, 'r') as f:
-        X = np.asarray(f['latent'])
+
+    df = pd.read_hdf(rawpath, key="latent")
+    X = np.copy(df.drop(columns=['word']))
+
+#    with h5py.File(rawpath, 'r') as f:
+#        X = np.asarray(f['latent'])
 
     # compute centroid
     vec = _compute_group_centroid(X, gid[1]) - _compute_group_centroid(X, gid[0])
@@ -721,7 +734,7 @@ def all_vector_diff ():
         L = cos[dims[i]]
         R = cos[dims[i + 1]]
         diff = np.sum(np.abs(R - L)) / float(L.shape[0])
-        print '{} and {}: {}'.format(dims[i], dims[i + 1], diff)
+        print('{} and {}: {}'.format(dims[i], dims[i + 1], diff))
 
     return jsonify({'status': 'success'}), 200
 
@@ -738,9 +751,9 @@ def vector_score ():
     histr, _ = np.histogram(csr, bins=np.arange(-1.0, 1.01, 0.02))
 
     mean = np.mean(cs)
-    print 'Vector score (GID {} & {}): average {}, max {}, min {}'.format(gid[0], \
-        gid[1], round(mean, 2), round(np.amax(cs), 2),  round(np.amin(cs), 2))
-    print 'Cohen\'s d: {}, pooled sd: {}'.format(cohen, pooled)
+    print('Vector score (GID {} & {}): average {}, max {}, min {}'.format(gid[0],
+        gid[1], round(mean, 2), round(np.amax(cs), 2),  round(np.amin(cs), 2)))
+    print('Cohen\'s d: {}, pooled sd: {}'.format(cohen, pooled))
  
     reply = {'mean': mean, 'cohen': cohen, 'unit': pooled}
     if 'histogram' in request.json:
@@ -758,7 +771,7 @@ def cluster_score ():
     X = read_ls(latent_dim)
     a = _pointwise_dist(X[ids])
     b = _pointwise_dist(X[ids], np.delete(X, ids, axis=0))
-    print 'Intra-cluster distance: {}, Inter-cluster distance: {}'.format(a, b)
+    print('Intra-cluster distance: {}, Inter-cluster distance: {}'.format(a, b))
     # this score resembles silhouette score, but it replaces inter-cluster
     # distance with the average length of all edges with one node inside and one outside.
     score = (b - a) / max(a, b)
@@ -795,7 +808,7 @@ def save_group ():
     INSERT INTO {}_group (alias, list)
     VALUES('{}', '{}')
     """.format(dset, alias, ids)
-    print query
+    print(query)
 
     cursor, conn = db.execute(query)
     db.safe_commit(conn, cursor)
@@ -814,7 +827,7 @@ def get_groups ():
 def delete_group ():
     gid = request.json['id']
     query = 'DELETE FROM {}_group WHERE id={}'.format(dset, gid)
-    print query
+    print(query)
 
     cursor, conn = db.execute(query)
     db.safe_commit(conn, cursor)
@@ -829,7 +842,7 @@ def create_vector():
 
     query = """INSERT INTO {}_vector (start, end, description)
     VALUES('{}', '{}', '{}')""".format(dset, start, end, desc)
-    print query
+    print(query)
 
     cursor, conn = db.execute(query)
     db.safe_commit(conn, cursor)
@@ -855,7 +868,7 @@ def delete_vector ():
     vid = request.json['id']
 
     query = 'DELETE FROM {}_vector WHERE id={}'.format(dset, vid)
-    print query
+    print(query)
 
     cursor, conn = db.execute(query)
     db.safe_commit(conn, cursor)
@@ -910,7 +923,7 @@ def _compare_vectors ():
     for dim in dims:
         for gid in vecs:
             _, _, cohen, _ = _pair_alignment(dim, gid)
-            print dim, gid[2], cohen
+            print(dim, gid[2], cohen)
             res.append([dim, gid[2], cohen])
 
     # save to csv file
