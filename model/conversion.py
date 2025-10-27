@@ -4,6 +4,8 @@ from pathlib import Path
 from sklearn.metrics import pairwise_distances
 from sklearn.manifold import TSNE
 
+# Source: https://nlp.stanford.edu/projects/glove/
+
 txt = Path(r"C:\tmp\wiki_giga_2024.txt")
 h5  = r"C:\tmp\latent50.h5"
 meta = Path(r"C:\tmp\meta.csv")
