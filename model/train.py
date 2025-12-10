@@ -15,6 +15,7 @@ import os
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger
 from keras.callbacks import Callback, ReduceLROnPlateau
 from keras import backend as K
+from pathlib import Path
 
 import model
 
@@ -23,11 +24,13 @@ from config_emoji import *
 
 latent_dim = 64
 
-base = '/home/yliu0/data/{}/'.format(dset)
+#base = '/home/yliu0/data/{}/'.format(dset)
+base = f'{Path(__file__).parent}/../deploy/data/{dset}/'
+base = os.path.normpath(base) + os.sep
 # input path
 inpath = base + fn_raw
 # output path
-outbase = base + '/{}_result/{}/'.format(dset, latent_dim)
+outbase = f'{base}{dset}_result{os.sep}{latent_dim}{os.sep}'
 # saved model and weights
 mpath = outbase + '{}_model_dim={}.json'.format(dset, latent_dim)
 wpath = outbase + '{}_model_dim={}.h5'.format(dset, latent_dim)
@@ -55,6 +58,7 @@ def load_data (fpath):
 '''
 class Visualizer(Callback):
     def __init__(self, x_test, encoder, decoder):
+        super().__init__()
         self.x_test = x_test
         self.encoder = encoder
         self.decoder = decoder

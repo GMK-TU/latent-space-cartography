@@ -8,19 +8,22 @@ Refer to the constructor of class Vae for a list of tunable hyper-parameters.
 from __future__ import print_function
 import json
 
+
+import keras
 from keras.layers import Input, Dense, Lambda, Flatten, Reshape
 from keras.layers import Conv2D, Conv2DTranspose
 from keras.models import Model, model_from_json
-from keras import backend as K
+#from keras import backend as K
 from keras import metrics
+from keras import ops
 
 def _sampling(args, latent_dim):
     epsilon_std = 1.0
 
     z_mean, z_log_var = args
-    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim),
+    epsilon = keras.random.normal(shape=(ops.shape(z_mean)[0], latent_dim),
                               mean=0., stddev=epsilon_std)
-    return z_mean + K.exp(z_log_var) * epsilon
+    return z_mean + ops.exp(z_log_var) * epsilon
 
 class Vae(object):
     # filters: number of convolutional filters to use
@@ -33,22 +36,24 @@ class Vae(object):
         self.filters, self.num_conv = filters, num_conv
         self.img_chns, self.img_cols, self.img_rows = img_dim
 
-        if K.image_data_format() == 'channels_first':
+        if keras.config.image_data_format() == 'channels_first':
             self.original_img_size = (self.img_chns, self.img_rows, self.img_cols)
         else:
             self.original_img_size = (self.img_rows, self.img_cols, self.img_chns)
 
     def _loss_function (self, x, z_mean, z_log_var, x_decoded_mean_squash):
-        if K.image_data_format() == 'channels_first':
+        if keras.config.image_data_format() == 'channels_first':
             _, img_chns, img_rows, img_cols = x.shape
         else:
             _, img_rows, img_cols, img_chns = x.shape
 
+        flat = Flatten()
+
         xent_loss = img_rows * img_cols * metrics.binary_crossentropy(
-            K.flatten(x),
-            K.flatten(x_decoded_mean_squash))
-        kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        vae_loss = K.mean(xent_loss + kl_loss)
+            flat(x),
+            flat(x_decoded_mean_squash))
+        kl_loss = - 0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
+        vae_loss = ops.mean(xent_loss + kl_loss)
 
     '''
     Instantiate the VAE, encoder and decoder model.
@@ -58,7 +63,7 @@ class Vae(object):
         original_img_size = self.original_img_size
         latent_dim = self.latent_dim
         intermediate_dim = self.intermediate_dim
-        up_dim = img_rows / 2
+        up_dim = img_rows // 2
         filters, num_conv = self.filters, self.num_conv
         batch_size = self.batch_size
 
@@ -94,7 +99,7 @@ class Vae(object):
         decoder_upsample = Dense(filters * up_dim * up_dim, activation='relu',
                                     name='decoder_upsample')
 
-        if K.image_data_format() == 'channels_first':
+        if keras.config.image_data_format() == 'channels_first':
             output_shape = (batch_size, filters, up_dim, up_dim)
         else:
             output_shape = (batch_size, up_dim, up_dim, filters)
@@ -139,15 +144,27 @@ class Vae(object):
         with open(mpath, 'w') as outfile:
             json.dump(vae.to_json(), outfile)
 
-        # Compute VAE loss
-        xent_loss = img_rows * img_cols * metrics.binary_crossentropy(
-            K.flatten(x),
-            K.flatten(x_decoded_mean_squash))
-        kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        vae_loss = K.mean(xent_loss + kl_loss)
-        vae.add_loss(vae_loss)
+        def make_vae_loss(img_rows, img_cols, z_mean, z_log_var):
+            def vae_loss(x_true, x_pred):
+                # reconstruction loss
+                flat = Flatten()
 
-        vae.compile(optimizer='rmsprop')
+                xent_loss = img_rows * img_cols * metrics.binary_crossentropy(
+                    flat(x_true),
+                    flat(x_pred),
+                )
+                # KL divergence
+                kl_loss = -0.5 * ops.sum(
+                    1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var),
+                    axis=-1,
+                )
+                return ops.mean(xent_loss + kl_loss)
+
+            return vae_loss
+
+        loss_fn = make_vae_loss(img_rows, img_cols, z_mean, z_log_var)
+
+        vae.compile(optimizer="rmsprop", loss=loss_fn)
 
         # We also instantiate the encoder and decoder
         # encoder: a model to project inputs on the latent space
@@ -183,12 +200,14 @@ class Vae(object):
         z_log_var = vae.get_layer('z_log_var').output
         x_decoded_mean_squash = vae.get_layer('decoder_mean_squash').output
 
+        flat = Flatten()
+
         # Compute VAE loss
         xent_loss = self.img_rows * self.img_cols * metrics.binary_crossentropy(
-            K.flatten(x),
-            K.flatten(x_decoded_mean_squash))
-        kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        vae_loss = K.mean(xent_loss + kl_loss)
+            flat(x),
+            flat(x_decoded_mean_squash))
+        kl_loss = - 0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
+        vae_loss = ops.mean(xent_loss + kl_loss)
         vae.add_loss(vae_loss)
         vae.compile(optimizer='rmsprop')
 
