@@ -33,7 +33,7 @@ inpath = base + fn_raw
 outbase = f'{base}{dset}_result{os.sep}{latent_dim}{os.sep}'
 # saved model and weights
 mpath = outbase + '{}_model_dim={}.json'.format(dset, latent_dim)
-wpath = outbase + '{}_model_dim={}.h5'.format(dset, latent_dim)
+wpath = outbase + '{}_model_dim={}.weights.h5'.format(dset, latent_dim)
 logpath = outbase + '{}_log_dim={}.csv'.format(dset, latent_dim)
 
 # input image dimensions
@@ -97,11 +97,12 @@ def train ():
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2,
                               patience=5, min_lr=0.001)
     vis = Visualizer(x_test, encoder, generator)
-    vae.fit(x_train,
+
+    vae.fit(x_train, x_train,
             shuffle=True,
             epochs=epochs,
             batch_size=batch_size,
-            validation_data=(x_test, None),
+            validation_data=(x_test, x_test),
             callbacks=[cp, stop, csv_logger, vis])
 
 '''
