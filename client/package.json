@@ -19,7 +19,7 @@
     "build": "npm run prebuild && npm run webpack-prod",
     "dev": "npm run prebuild && npm run webpack-dev",
     "prebuild": "rimraf build && shx mkdir -p build && shx cp -r assets/* build/",
-    "webpack-dev": "cross-env NODE_ENV=development webpack --progress",
+    "webpack-dev": "cross-env NODE_ENV=development webpack-dev-server --progress --hot --open",
     "webpack-prod": "cross-env NODE_ENV=production webpack --progress",
     "deploy": "npm run build && ./deploy.sh",
     "start": "python server.py"
