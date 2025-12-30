@@ -7,6 +7,7 @@
     <!--Header-->
     <header class="navbar bd-navbar">
       <span class="ml-3" style="font-weight: 500;">Latent Space Cartography</span>
+      <DatasetPicker />
       <help-button class="ml-3"></help-button>
     </header>
 
@@ -142,6 +143,7 @@
   import FilterDropdown from '../layouts/FilterDropdown.vue'
   import SearchPanel from '../layouts/SearchPanel.vue'
   import FilterButton from '../layouts/FilterButton.vue'
+  import DatasetPicker from "@/components/datasets/DatasetPicker.vue";
 
   function clear () {
     // remove all nodes
@@ -267,7 +269,8 @@
       InterpolatePanel,
       DetailCard,
       DetailTip,
-      VueLoading
+      VueLoading,
+      DatasetPicker
     },
     name: 'AnalogyPage',
     data () {

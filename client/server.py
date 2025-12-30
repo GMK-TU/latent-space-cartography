@@ -14,6 +14,13 @@ import os
 import time
 import csv
 import shutil
+import threading
+import zipfile
+import uuid
+from werkzeug.utils import secure_filename
+from datasets_db import DatasetsDB
+from datasets_import import import_metadata_csv
+import pandas as pd
 from PIL import Image
 
 # ugly way to import a file from another directory ...
@@ -21,7 +28,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../model'))
 import model
 
 from flask import Flask, send_from_directory, send_file
-from flask import request, jsonify
+from flask import request, jsonify, abort
 import sqlite3
 
 # dataset we're working with
@@ -91,8 +98,12 @@ def load_model (latent_dim):
 # read latent space
 def read_ls (latent_dim):
     rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    with h5py.File(rawpath, 'r') as f:
-        X = np.asarray(f['latent'])
+    df = pd.read_hdf(rawpath, key="latent")
+    X = np.copy(df.drop(columns=['word']))
+
+    #    Original version. Check you do generlize
+    #    with h5py.File(rawpath, 'r') as f:
+    #        X = np.asarray(f['latent'])
     return X
 
 def read_raw ():
@@ -409,6 +420,8 @@ def _pair_alignment (latent_dim, gid):
 # global app and DB cursor
 app = Flask(__name__, static_url_path='')
 db = DB()
+# init dataset registry DB (datasets + jobs tables)
+_ds_db = DatasetsDB(db.filename)
 
 # static files
 @app.route('/')
@@ -419,6 +432,7 @@ def index ():
 @app.route('/build/<path:path>')
 def serve_public (path):
     return send_from_directory('build', path)
+
 @app.route('/data/<path:path>')
 def serve_data (path):
     return send_from_directory('data', path)
@@ -458,11 +472,16 @@ def get_pca ():
     indices = np.asarray(request.json['indices'], dtype=np.int16)
 
     rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    with h5py.File(rawpath, 'r') as f:
-        raw = np.asarray(f['latent'])
-        length = indices.shape[0]
-        if length > 0:
-            raw = raw[indices]
+
+    df = pd.read_hdf(rawpath, key="latent")
+    raw = np.copy(df.drop(columns=['word']))
+
+    # Original version. Check how to generalize.
+    #   with h5py.File(rawpath, 'r') as f:
+    #       raw = np.asarray(f['latent'])
+    length = indices.shape[0]
+    if length > 0:
+        raw = raw[indices]
 
         pca = PCA(n_components = pca_dim)
         d = pca.fit_transform(raw)
@@ -547,8 +566,13 @@ def apply_analogy ():
 
     # read latent space
     rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    with h5py.File(rawpath, 'r') as f:
-        X = np.asarray(f['latent'])
+
+    df = pd.read_hdf(rawpath, key="latent")
+    X = np.copy(df.drop(columns=['word']))
+
+#   Original version. Check how to generalize.
+#    with h5py.File(rawpath, 'r') as f:
+#        X = np.asarray(f['latent'])
 
     # compute centroid
     vec = _compute_group_centroid(X, gid[1]) - _compute_group_centroid(X, gid[0])
@@ -925,9 +949,218 @@ def _compare_vectors ():
 
     return jsonify({'status': 'success'}), 200
 
+# ==========================
+# DATASET IMPORT ENDPOINTS
+# ==========================
+
+def _require_ds_db():
+    if _ds_db is None:
+        # best effort: initialize lazily
+        try:
+            return DatasetsDB(db.filename)
+        except Exception:
+            return None
+    return _ds_db
+
+def _dataset_root(dataset_id):
+    return abs_path(f'./data/{dataset_id}')
+
+def _ensure_dirs(dataset_id):
+    root = _dataset_root(dataset_id)
+    raw_dir = os.path.join(root, 'raw')
+    meta_dir = os.path.join(root, 'meta')
+    os.makedirs(raw_dir, exist_ok=True)
+    os.makedirs(meta_dir, exist_ok=True)
+    return root, raw_dir, meta_dir
+
+def _preview_images(dataset_id, raw_dir, limit=12):
+    exts = {'.jpg','.jpeg','.png','.gif','.webp','.bmp'}
+    imgs = []
+    for dirpath, _, filenames in os.walk(raw_dir):
+        for fn in sorted(filenames):
+            if os.path.splitext(fn.lower())[1] in exts:
+                rel = os.path.relpath(os.path.join(dirpath, fn), abs_path('./data'))
+                imgs.append(f'/data/{rel.replace(os.sep, "/")}')
+                if len(imgs) >= limit:
+                    return imgs
+    return imgs
+
+@app.route('/api/datasets', methods=['GET'])
+def list_datasets():
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+    return jsonify(dsdb.list_datasets()), 200
+
+@app.route('/api/datasets', methods=['POST'])
+def create_dataset():
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    name = payload.get('name') or f'Dataset {time.strftime("%Y-%m-%d %H:%M:%S")}'
+    dataset_id = payload.get('id') or uuid.uuid4().hex[:12]
+
+    _ensure_dirs(dataset_id)
+    ds = dsdb.create_dataset(dataset_id=dataset_id, name=name)
+    return jsonify(ds), 200
+
+@app.route('/api/datasets/<dataset_id>', methods=['GET'])
+def get_dataset(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+    ds = dsdb.get_dataset(dataset_id)
+    if not ds:
+        return jsonify({'error':'not found'}), 404
+    return jsonify(ds), 200
+
+@app.route('/api/datasets/<dataset_id>/raw-zip', methods=['POST'])
+def upload_raw_zip(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    if 'file' not in request.files:
+        return jsonify({'error':'missing file'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'error':'empty filename'}), 400
+
+    root, raw_dir, _ = _ensure_dirs(dataset_id)
+    dsdb.update_dataset(dataset_id, status='uploading_raw', progress=0, message='Uploading ZIP…')
+
+    up_dir = os.path.join(root, 'uploads')
+    os.makedirs(up_dir, exist_ok=True)
+    zip_name = secure_filename(f.filename)
+    zip_path = os.path.join(up_dir, zip_name)
+    f.save(zip_path)
+
+    # extract zip into raw_dir (flattening not enforced)
+    dsdb.update_dataset(dataset_id, status='uploading_raw', progress=10, message='Extracting ZIP…')
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(raw_dir)
+    except zipfile.BadZipFile:
+        dsdb.update_dataset(dataset_id, status='error', progress=0, message='Bad ZIP file.')
+        return jsonify({'error':'bad zip'}), 400
+
+    preview = _preview_images(dataset_id, raw_dir, limit=12)
+    dsdb.update_dataset(dataset_id, status='raw_uploaded', progress=25, message='Images uploaded.', extra={'previewImages': preview})
+    return jsonify({'previewImages': preview}), 200
+
+@app.route('/api/datasets/<dataset_id>/metadata-csv', methods=['POST'])
+def upload_metadata_csv(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    if 'file' not in request.files:
+        return jsonify({'error':'missing file'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'error':'empty filename'}), 400
+
+    root, raw_dir, meta_dir = _ensure_dirs(dataset_id)
+    dsdb.update_dataset(dataset_id, status='uploading_csv', progress=25, message='Uploading CSV…')
+
+    csv_name = secure_filename(f.filename)
+    csv_path = os.path.join(meta_dir, csv_name)
+    f.save(csv_path)
+
+    dsdb.update_dataset(dataset_id, status='uploading_csv', progress=28, message='Importing metadata into SQLite…')
+    try:
+        preview_meta, matched_preview = import_metadata_csv(db.filename, dataset_id, csv_path, raw_dir)
+    except Exception as e:
+        dsdb.update_dataset(dataset_id, status='error', progress=0, message='CSV import failed.', error=str(e))
+        return jsonify({'error': str(e)}), 400
+
+    dsdb.update_dataset(dataset_id, status='csv_uploaded', progress=35, message='Metadata uploaded.', extra={'previewMeta': preview_meta, 'matchedPreview': matched_preview})
+    return jsonify({'previewMeta': preview_meta, 'matchedPreview': matched_preview}), 200
+
+def _compute_worker(dataset_id, job_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return
+
+    # IMPORTANT: This is a scaffold. Replace the sleeps with real computation calls:
+    # - build latent space
+    # - PCA, UMAP, t-SNE
+    # - write artifacts to ./data/<dataset_id>/...
+    stages = [
+        ('latent', 0, 40, 2.0),
+        ('pca', 40, 70, 2.0),
+        ('umap', 70, 90, 2.0),
+        ('finalize', 90, 100, 1.0),
+    ]
+
+    dsdb.update_dataset(dataset_id, status='computing', progress=35, message='Starting computations…')
+    for stage, p0, p1, seconds in stages:
+        dsdb.update_job(job_id, stage=stage, progress=p0, message=f'Computing {stage}…')
+        steps = 10
+        for k in range(steps):
+            time.sleep(seconds / steps)
+            prog = int(p0 + (p1 - p0) * ((k + 1) / steps))
+            dsdb.update_job(job_id, stage=stage, progress=prog, message=f'Computing {stage}…')
+            dsdb.update_dataset(dataset_id, status='computing', progress=min(100, max(35, prog)), message=f'Computing {stage}…')
+
+    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='Done.', done=True)
+    dsdb.update_dataset(dataset_id, status='ready', progress=100, message='Ready.')
+
+@app.route('/api/datasets/<dataset_id>/compute', methods=['POST'])
+def start_compute(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    job_id = uuid.uuid4().hex
+    dsdb.create_job(job_id=job_id, dataset_id=dataset_id, progress=0, message='Queued…', stage='queued')
+    t = threading.Thread(target=_compute_worker, args=(dataset_id, job_id), daemon=True)
+    t.start()
+    return jsonify({'jobId': job_id}), 200
+
+@app.route('/api/jobs/<job_id>', methods=['GET'])
+def get_job(job_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+    job = dsdb.get_job(job_id)
+    if not job:
+        return jsonify({'error':'not found'}), 404
+    return jsonify(job), 200
+
+def _exec_and_commit(query: str):
+    cursor, conn = db.execute(query)
+    db.safe_commit(conn, cursor)
+
+@app.route("/api/datasets/<dataset_id>", methods=["DELETE"])
+def delete_dataset(dataset_id):
+    try:
+        # Delete registry rows
+        _exec_and_commit(f"DELETE FROM datasets WHERE id='{dataset_id}'")
+        _exec_and_commit(f"DELETE FROM dataset_jobs WHERE dataset_id='{dataset_id}'")
+
+        # Drop per-dataset tables
+        for suffix in ["_meta", "_group", "_vector"]:
+            table = f"{dataset_id}{suffix}"
+            _exec_and_commit(f"DROP TABLE IF EXISTS {table}")
+
+        # Remove dataset files/folder
+        dataset_dir = os.path.join("data", dataset_id)
+        if os.path.isdir(dataset_dir):
+            shutil.rmtree(dataset_dir)
+
+        return jsonify({"status": "success", "dataset_id": dataset_id}), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e), "dataset_id": dataset_id}), 500
+
+
 if __name__ == '__main__':
     init_server()
     print('\033[92m' + 'Server started!')
     print('Navigate to http://127.0.0.1:5000/ in your browser')
     print('Press CTRL+C to stop' + '\033[0m')
-    app.run(host= '0.0.0.0')
+    app.run(debug=True)  # change to (host= '0.0.0.0') in production
+    #app.run(host= '0.0.0.0')

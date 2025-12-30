@@ -3,7 +3,7 @@
 
 dset = 'glove'
 data_type = 'text'
-dims = [50, 100, 200, 300]
+dims = [50]
 metric = 'cosine'
 
 # MySQL table schema

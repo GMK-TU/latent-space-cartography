@@ -9,6 +9,7 @@ import SplomPage from '../pages/SplomPage.vue'
 import AnalogyPage from '../pages/AnalogyPage.vue'
 import ComparePage from '../pages/ComparePage.vue'
 import InitialPage from '../pages/InitialPage.vue'
+import DatasetImportPage from '../pages/DatasetImportPage.vue'
 
 Vue.use(Router)
 
@@ -58,6 +59,11 @@ export default new Router({
       path: '/analogy',
       name: 'analogy',
       component: AnalogyPage
+    },
+    {
+      path: '/datasets/import',
+      name: 'dataset-import',
+      component: DatasetImportPage
     }
   ]
 })
