@@ -15,8 +15,8 @@ module.exports = {
   module: {
     rules: [
       { 
-      test: /\.vue$/, 
-      loader: 'vue-loader' 
+        test: /\.vue$/, 
+        loader: 'vue-loader'
       },
       { 
         test: /\.js$/, 
@@ -27,17 +27,26 @@ module.exports = {
         test: /\.css$/, 
         use: ['style-loader', 'css-loader'] 
       },
+      // --- FIXED SECTION START ---
       { 
-        // This rule handles Fonts AND SVGs now
-        test: /.(ttf|otf|eot|svg|woff(2)?)(\?[a-z0-9]+)?$/, 
-        use: [{ loader: 'file-loader', options: { name: '[name].[ext]', publicPath: '/build/' } }] 
+        // RULE 1: FONTS (Native Webpack 5)
+        // Matches woff, woff2, ttf, eot, otf AND version strings like ?v=4.7.0
+        test: /\.(woff|woff2|eot|ttf|otf)(\?.*)?$/,
+        type: 'asset/resource',
+        generator: {
+          filename: '[name][ext]'
+        }
       },
       { 
-        // FIX: Removed '|svg' from this regex to prevent the conflict
-        test: /\.(png|jpg|gif)$/, 
-        loader: 'file-loader', 
-        options: { name: '[name].[ext]?[hash]' } 
+        // RULE 2: IMAGES & SVGs (Native Webpack 5)
+        // Matches images and svgs
+        test: /\.(png|jpg|gif|svg)(\?.*)?$/,
+        type: 'asset/resource',
+        generator: {
+          filename: '[name][ext]'
+        }
       }
+      // --- FIXED SECTION END ---
     ]
   },
   resolve: {
@@ -51,7 +60,6 @@ module.exports = {
   ],
   devServer: {
     historyApiFallback: true,
-    // 'static' replaces 'contentBase' in Webpack 5
     static: [
         { directory: path.resolve(__dirname, '.') },
         { directory: path.resolve(__dirname, './build') }
@@ -59,7 +67,6 @@ module.exports = {
     devMiddleware: {
         publicPath: '/build/',
     },
-    // FIX: Converted proxy to an Array format to satisfy the schema
     proxy: [
       {
         context: ['/api'],
@@ -72,12 +79,11 @@ module.exports = {
   performance: {
     hints: false
   },
-  // FIX 4: Removed the '#' prefix. Webpack 5 does not support legacy names.
   devtool: 'eval-source-map'
 }
 
 if (process.env.NODE_ENV === 'production') {
-  module.exports.devtool = 'source-map' // FIX 4: Removed '#'
+  module.exports.devtool = 'source-map'
   
   module.exports.plugins = (module.exports.plugins || []).concat([
     new webpack.DefinePlugin({
@@ -85,8 +91,6 @@ if (process.env.NODE_ENV === 'production') {
         NODE_ENV: '"production"'
       }
     }),
-    // FIX 5: Removed webpack.optimize.UglifyJsPlugin.
-    // Webpack 5 minimizes automatically when mode is 'production'.
     new webpack.LoaderOptionsPlugin({
       minimize: true
     })
