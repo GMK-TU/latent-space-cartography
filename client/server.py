@@ -17,6 +17,7 @@ import shutil
 import threading
 import zipfile
 import uuid
+import math
 from werkzeug.utils import secure_filename
 from datasets_db import DatasetsDB
 from datasets_import import import_metadata_csv
@@ -1156,6 +1157,189 @@ def delete_dataset(dataset_id):
     except Exception as e:
         return jsonify({"status": "error", "error": str(e), "dataset_id": dataset_id}), 500
 
+# Allowed modes for conversion
+IMAGE_MODES = {
+    'RGB': 3,
+    'RGBA': 4,
+    'L': 1  # Grayscale
+}
+
+def make_dataset_job(dataset_id, job_id, params, dsdb):
+    """
+    Worker function to process raw images into HDF5 and generate a config file.
+    
+    Args:
+        dataset_id (str): The dataset unique ID.
+        job_id (str): The job unique ID.
+        params (dict): {
+            'width': int,
+            'height': int,
+            'train_pct': int (1-99),
+            'latent_dims': str ("4, 8, 16"),
+            'dataset_name': str,
+            'img_mode': str ('RGB', 'RGBA', 'L')
+        }
+        dsdb (DatasetsDB): Database instance for status updates.
+    """
+    
+    # 1. Setup & Input Parsing
+    # ---------------------------------------------------------
+    try:
+        target_w = int(params.get('width', 64))
+        target_h = int(params.get('height', 64))
+        pct = int(params.get('train_pct', 80))
+        dset_name = params.get('dataset_name', 'dataset')
+        img_mode = params.get('img_mode', 'RGB')
+        latent_str = params.get('latent_dims', '')
+        
+        # Validate Latents
+        latent_dims = [int(x.strip()) for x in latent_str.split(',') if x.strip()]
+        if not latent_dims:
+            raise ValueError("Latent dimensions cannot be empty.")
+            
+        # Validate Percentage
+        if not (1 <= pct <= 99):
+            raise ValueError(f"Training percentage must be between 1 and 99 (got {pct}).")
+        
+        # Validate Mode
+        if img_mode not in IMAGE_MODES:
+            raise ValueError(f"Invalid image mode {img_mode}. Supported: {list(IMAGE_MODES.keys())}")
+        target_chns = IMAGE_MODES[img_mode]
+
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', message=str(e), done=True)
+        return
+
+    # Paths
+    root = f'./data/{dataset_id}'
+    raw_dir = os.path.join(root, 'raw')
+    out_dir = os.path.join(root, 'img_vectors')
+    os.makedirs(out_dir, exist_ok=True)
+    
+    # 2. Image Processing Loop
+    # ---------------------------------------------------------
+    dsdb.update_job(job_id, stage='processing_images', progress=0, message='Scanning images...')
+    
+    valid_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif'}
+    filenames = sorted([
+        f for f in os.listdir(raw_dir) 
+        if os.path.splitext(f.lower())[1] in valid_exts
+    ])
+    
+    if not filenames:
+        dsdb.update_job(job_id, status='error', message='No images found in raw directory.', done=True)
+        return
+
+    vectors = []
+    warnings = []
+    total_files = len(filenames)
+    
+    try:
+        for idx, fname in enumerate(filenames):
+            fpath = os.path.join(raw_dir, fname)
+            
+            with Image.open(fpath) as img:
+                img = img.convert(img_mode)
+                w, h = img.size
+                
+                # Critical Check: Image smaller than target
+                if w < target_w or h < target_h:
+                    error_msg = f"Image '{fname}' ({w}x{h}) is smaller than target ({target_w}x{target_h}). Processing aborted."
+                    dsdb.update_job(job_id, status='error', message=error_msg, done=True)
+                    return
+                
+                # Center Crop Logic (if not exact match)
+                if w != target_w or h != target_h:
+                    left = (w - target_w) / 2
+                    top = (h - target_h) / 2
+                    right = (w + target_w) / 2
+                    bottom = (h + target_h) / 2
+                    
+                    img = img.crop((left, top, right, bottom))
+                    # Record a warning (limit to first 5 to avoid spamming DB)
+                    if len(warnings) < 5:
+                        warnings.append(f"Cropped {fname}")
+                
+                # Convert to numpy array (uint8)
+                vectors.append(np.asarray(img, dtype='uint8'))
+
+            # Update Progress every 10 images
+            if idx % 10 == 0:
+                prog = int((idx / total_files) * 50) # First 50% of progress bar
+                dsdb.update_job(job_id, progress=prog, message=f'Processed {idx}/{total_files} images...')
+
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', message=f"Error processing {fname}: {str(e)}", done=True)
+        return
+
+    # Stack into one large array (N, H, W, C)
+    np_vectors = np.array(vectors)
+
+    # 3. HDF5 Creation
+    # ---------------------------------------------------------
+    dsdb.update_job(job_id, stage='saving_hdf5', progress=60, message='Writing HDF5 file...')
+    
+    h5_filename = f"{dset_name}.h5"
+    h5_path = os.path.join(out_dir, h5_filename)
+    
+    try:
+        with h5py.File(h5_path, 'w') as f:
+            # Create dataset. Use compression to save space.
+            dset = f.create_dataset(dset_name, data=np_vectors, compression="gzip")
+            
+            # Store metadata attributes inside HDF5 as well (optional but good practice)
+            dset.attrs['dims'] = latent_dims
+            dset.attrs['train_pct'] = pct
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', message=f"HDF5 Write Failed: {str(e)}", done=True)
+        return
+
+    # 4. Config Generation
+    # ---------------------------------------------------------
+    dsdb.update_job(job_id, stage='generating_config', progress=80, message='Generating config...')
+
+    # Calculate Split
+    N = len(np_vectors)
+    if pct >= 50:
+        train_split = math.floor(N * (pct / 100.0))
+    else:
+        train_split = math.ceil(N * (pct / 100.0))
+
+    config_content = f'''#!/usr/bin/env python
+# configurations unique to {dset_name} dataset
+
+dset = '{dset_name}'
+data_type = 'image'
+img_rows, img_cols, img_chns = {target_h}, {target_w}, {target_chns}
+img_mode = '{img_mode}'
+train_split = {train_split}
+metric = 'l2'
+
+fn_raw = '{h5_filename}'
+key_raw = '{dset_name}' # the dataset key in hdf5 file
+
+# dims = {latent_dims} # all latent dims
+dims = {latent_dims}
+
+# MySQL table schema
+schema_meta = 'i, name, created_at, extra_field' 
+schema_header = None
+'''
+
+    config_path = os.path.join(out_dir, f'config_{dset_name}.py')
+    with open(config_path, 'w') as f:
+        f.write(config_content)
+
+    # 5. Finalize
+    # ---------------------------------------------------------
+    final_msg = "Done."
+    if warnings:
+        final_msg += f" (Note: {len(warnings)} images cropped, e.g., {warnings[0]})"
+        
+    dsdb.update_job(job_id, status='done', stage='done', progress=100, message=final_msg, done=True)
+    
+    # Optionally mark dataset as "processed" in main registry
+    dsdb.update_dataset(dataset_id, status='vectors_ready', message='Vectors and Config generated.')
 
 if __name__ == '__main__':
     init_server()
