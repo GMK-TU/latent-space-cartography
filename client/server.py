@@ -23,6 +23,10 @@ from datasets_db import DatasetsDB
 from datasets_import import import_metadata_csv
 import pandas as pd
 from PIL import Image
+import importlib.util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from model.new_train import train_vae
+from model.pca import run_pca
 
 # ugly way to import a file from another directory ...
 sys.path.append(os.path.join(os.path.dirname(__file__), '../model'))
@@ -1341,6 +1345,145 @@ schema_header = None
     # Optionally mark dataset as "processed" in main registry
     dsdb.update_dataset(dataset_id, status='vectors_ready', message='Vectors and Config generated.')
 
+def train_dataset_job(dataset_id, job_id, params, dsdb):
+    """
+    Worker to run VAE training based on generated vectors/config.
+    
+    Args:
+        dataset_id (str): ID of the dataset.
+        job_id (str): ID of the current job.
+        params (dict): {
+            'epochs': int,
+            'latent_dim': int (optional, if None, trains all dims in config)
+        }
+    """
+    epochs = int(params.get('epochs', 100))
+    target_dim = params.get('latent_dim') # If specific dim requested
+    
+    root = f'./data/{dataset_id}'
+    vectors_dir = os.path.join(root, 'img_vectors')
+    
+    # 1. Locate Config File 
+    # We don't know the dataset name easily unless we scan, 
+    # but we saved it as 'config_<name>.py'. 
+    # Let's find the only python file starting with config_ in that dir.
+    try:
+        config_files = [f for f in os.listdir(vectors_dir) if f.startswith('config_') and f.endswith('.py')]
+        if not config_files:
+            raise FileNotFoundError("No config file found. Did you run the vectorization job?")
+        
+        config_path = os.path.join(vectors_dir, config_files[0])
+        
+        # Dynamic Import
+        spec = importlib.util.spec_from_file_location("dset_config", config_path)
+        dset_config = importlib.util.module_from_spec(spec)
+        sys.modules["dset_config"] = dset_config
+        spec.loader.exec_module(dset_config)
+        
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', message=f"Config Error: {e}", done=True)
+        return
+
+    # 2. Determine Dimensions to Train
+    dims_to_train = []
+    if target_dim:
+        dims_to_train = [int(target_dim)]
+    elif hasattr(dset_config, 'dims'):
+        dims_to_train = dset_config.dims
+    else:
+        # Fallback
+        dims_to_train = [64]
+
+    dsdb.update_job(job_id, stage='training', progress=5, message=f'Starting training for dims: {dims_to_train}')
+
+    # 3. Loop through dimensions
+    total_dims = len(dims_to_train)
+    
+    try:
+        for i, dim in enumerate(dims_to_train):
+            msg = f"Training latent_dim={dim} ({i+1}/{total_dims})"
+            dsdb.update_job(job_id, message=msg)
+            
+            # Run the training (synchronous)
+            # We catch errors per dimension so one failure doesn't kill the whole batch?
+            # Or fail hard? Let's fail hard for safety.
+            train_vae(
+                dataset_id=dataset_id, 
+                job_id=job_id, 
+                config=dset_config, 
+                latent_dim=dim, 
+                epochs=epochs, 
+                dsdb=dsdb
+            )
+            
+            # Update overall progress (if running multiple dims)
+            # Note: The callback inside train_vae updates progress 10-90.
+            # If we have multiple dims, we might want to manage progress differently,
+            # but for now, the UI will see the bar fill up for each dim.
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        dsdb.update_job(job_id, status='error', message=f"Training Failed: {str(e)}", done=True)
+        return
+
+    # 4. Finalize
+    dsdb.update_dataset(dataset_id, status='trained', message='Model training complete.')
+    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='All models trained.', done=True)
+
+def run_pca_job(dataset_id, job_id, params, dsdb):
+    """
+    Worker to run PCA dimensionality reduction on trained vectors.
+    
+    Args:
+        dataset_id (str): ID of the dataset.
+        job_id (str): ID of the current job.
+        params (dict): Empty dict (no args required).
+    """
+    
+    # 1. Discover Trained Models
+    # We look into ./data/<id>/models/ for any subdirectories that are numbers
+    models_root = f'./data/{dataset_id}/models'
+    if not os.path.exists(models_root):
+        dsdb.update_job(job_id, status='error', message='No models directory found. Train a model first.', done=True)
+        return
+
+    # Find directories like "64", "128", "32"
+    trained_dims = [
+        int(d) for d in os.listdir(models_root) 
+        if os.path.isdir(os.path.join(models_root, d)) and d.isdigit()
+    ]
+    
+    if not trained_dims:
+        dsdb.update_job(job_id, status='error', message='No trained latent dimensions found.', done=True)
+        return
+
+    trained_dims.sort()
+    total = len(trained_dims)
+    dsdb.update_job(job_id, stage='pca', progress=0, message=f'Found {total} dimensions to process: {trained_dims}')
+
+    # 2. Process Each Dimension
+    try:
+        for index, dim in enumerate(trained_dims):
+            msg = f"Running PCA on latent dim {dim} ({index + 1}/{total})"
+            
+            # Calculate progress slice (e.g., if 2 dims, 0-50% then 50-100%)
+            prog_start = int((index / total) * 100)
+            dsdb.update_job(job_id, progress=prog_start, message=msg)
+
+            # CALL THE PCA FUNCTION
+            run_pca(dataset_id, dim)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        dsdb.update_job(job_id, status='error', message=f"PCA Failed on dim {dim}: {str(e)}", done=True)
+        return
+
+    # 3. Finalize
+    dsdb.update_dataset(dataset_id, status='ready', message='PCA complete. Dataset ready for visualization.')
+    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='PCA calculation done.', done=True)
+
 if __name__ == '__main__':
     init_server()
     print('\033[92m' + 'Server started!')
@@ -1348,3 +1491,4 @@ if __name__ == '__main__':
     print('Press CTRL+C to stop' + '\033[0m')
     app.run(debug=True)  # change to (host= '0.0.0.0') in production
     #app.run(host= '0.0.0.0')
+
