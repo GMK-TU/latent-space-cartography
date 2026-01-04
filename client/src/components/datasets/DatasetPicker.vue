@@ -13,7 +13,7 @@
       <DatasetStatusBadge v-if="active" :status="active.status" />
 
       <button class="ds-picker__btn" type="button" @click="goImport">
-        Import / Manage…
+        Import or Manage datasets
       </button>
     </div>
 
@@ -69,9 +69,17 @@ export default {
 
 <style scoped>
 .ds-picker { display: grid; gap: 8px; }
-.ds-picker__row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.ds-picker__label { font-size: 12px; opacity: 0.8; }
+.ds-picker__row { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; }
 .ds-picker__select { min-width: 240px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
-.ds-picker__btn { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); background: transparent; cursor: pointer; }
-.ds-picker__btn:hover { background: rgba(0,0,0,0.04); }
+.ds-picker__btn {
+    color:inherit; padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.2);
+    background: transparent; cursor: pointer;
+    background-color: color-mix(in srgb, currentColor 12%, transparent);
+    }
+.ds-picker__btn:hover {
+    background-color: color-mix(in srgb, currentColor 20%, transparent);
+    border-color: color-mix(in srgb, currentColor 45%, transparent);
+    }
 </style>

@@ -214,7 +214,7 @@ export default {
 .import__title { margin: 0 0 14px; font-size: 22px; }
 .import__top { display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(0,0,0,0.12); border-radius: 12px; }
 .import__datasetRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.import__label { font-size: 12px; opacity: 0.8; }
+.import__label { margin-bottom: 0; font-weight: bold; }
 .import__select { min-width: 280px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
 .import__btn { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); background: transparent; cursor: pointer; }
 .import__btn:hover { background: rgba(0,0,0,0.04); }
