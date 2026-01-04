@@ -1189,6 +1189,31 @@ def start_train(dataset_id):
     job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (train)…", job_stage="queued")
     return jsonify({'jobId': job_id}), 200
 
+@app.route('/api/datasets/<dataset_id>/pca', methods=['POST'])
+def start_pca(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    ds = dsdb.get_dataset(dataset_id)
+    if not ds:
+        return jsonify({'error': 'dataset not found'}), 404
+    if ds.get("status") not in ("vectors_ready", "trained", "ready"):
+        return jsonify({'error': 'dataset must be vectors_ready (or trained) before PCA'}), 400
+
+    params = request.get_json(silent=True) or {}
+
+    def worker(dataset_id, job_id, params):
+        dsdb_local = _require_ds_db()
+        if dsdb_local is None:
+            return
+        def fn():
+            run_pca_job(dataset_id, job_id, params, dsdb_local)
+        _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Running PCA…")
+
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (pca)…", job_stage="queued")
+    return jsonify({'jobId': job_id}), 200
+
 
 @app.route('/api/jobs/<job_id>', methods=['GET'])
 def get_job(job_id):
