@@ -1,5 +1,9 @@
 build/
 node_modules/
 \.idea/
-data/
+# Ignore everything in data
+data/*
+
+# But keep the directory and the .gitkeep file
+!data/.gitkeep
 
