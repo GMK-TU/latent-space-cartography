@@ -1,5 +1,6 @@
 # ---- Core numerical / ML stack (Py 3.12 compatible) ----
 numpy==1.26.4
+pandas==2.3.3
 scipy==1.11.4
 scikit-learn==1.4.2
 matplotlib==3.8.4
