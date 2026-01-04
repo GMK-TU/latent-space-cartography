@@ -6,6 +6,8 @@ export const DatasetStatus = Object.freeze({
   UPLOADING_CSV: "uploading_csv",
   CSV_UPLOADED: "csv_uploaded",
   COMPUTING: "computing",
+  VECTORS_READY: "vectors_ready",
+  TRAINED: "trained",
   READY: "ready",
   ERROR: "error",
 });

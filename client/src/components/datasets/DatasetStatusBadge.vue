@@ -21,6 +21,8 @@ export default {
         case DatasetStatus.UPLOADING_CSV: return "Uploading (CSV)";
         case DatasetStatus.CSV_UPLOADED: return "Metadata uploaded";
         case DatasetStatus.COMPUTING: return "Computing";
+        case DatasetStatus.VECTORS_READY: return "Vectors ready";
+        case DatasetStatus.TRAINED: return "Trained";
         case DatasetStatus.READY: return "Ready";
         case DatasetStatus.ERROR: return "Error";
         default: return this.status;
