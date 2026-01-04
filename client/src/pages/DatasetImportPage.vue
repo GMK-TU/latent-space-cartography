@@ -15,9 +15,14 @@
         <DatasetStatusBadge v-if="active" :status="active.status" />
 
         <button class="import__btnDanger" v-if="active" type="button" @click="deleteDataset">Delete dataset</button>
+
+        <button class="import__btnPrimary" v-if="active" type="button" :disabled="!canGoToAnalogy" @click="goToAnalogy">
+          Open in Analogy
+        </button>
       </div>
 
       <DatasetProgress v-if="active" :progress="active.progress" :message="active.message" />
+
       <div class="import__error" v-if="active && active.error">{{ active.error }}</div>
       <div class="import__error" v-else-if="active && store.state.lastError">{{ store.state.lastError }}</div>
     </div>
@@ -174,6 +179,10 @@ export default {
       if (this.active.status !== DatasetStatus.CSV_UPLOADED) return true;
       return this.computingDisabled;
     },
+    canGoToAnalogy() {
+      if (!this.active) return false;
+      return this.active.status === DatasetStatus.READY;
+    },
   },
   async created() {
     await this.store.actions.fetchDatasets();
@@ -288,6 +297,17 @@ export default {
             pca: {},
           });
         },
+        goToAnalogy() {
+            if (!this.activeId) return;
+
+            // Ensure the imported dataset becomes the active dataset globally
+            this.store.actions.setActiveDataset(this.activeId);
+
+            // Navigate to Analogy page
+            if (this.$router) {
+              this.$router.push({ name: "analogy" }).catch(() => {});
+            }
+          },
 
   },
 };
