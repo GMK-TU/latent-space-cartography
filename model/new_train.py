@@ -120,7 +120,7 @@ def train_vae(dataset_id, job_id, config, latent_dim, epochs, dsdb):
     os.makedirs(out_dir, exist_ok=True)
     
     mpath = os.path.join(out_dir, 'model.json')
-    wpath = os.path.join(out_dir, 'weights.h5')
+    wpath = os.path.join(out_dir, f'{dataset_id}.weights.h5')
     logpath = os.path.join(out_dir, 'training_log.csv')
     embeddings_path = os.path.join(out_dir, 'latent_vectors.h5')
 
