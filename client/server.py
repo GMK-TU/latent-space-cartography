@@ -1265,7 +1265,14 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
                         warnings.append(f"Cropped {fname}")
                 
                 # Convert to numpy array (uint8)
-                vectors.append(np.asarray(img, dtype='uint8'))
+                arr = np.asarray(img, dtype='uint8')
+
+                # FIX: Expand dimensions for Grayscale so it becomes (H, W, 1)
+                # Keras expects 4D inputs (N, H, W, C), so 3D here is mandatory.
+                if arr.ndim == 2:
+                    arr = np.expand_dims(arr, axis=-1)
+
+                vectors.append(arr)
 
             # Update Progress every 10 images
             if idx % 10 == 0:
@@ -1364,9 +1371,6 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
     vectors_dir = os.path.join(root, 'img_vectors')
     
     # 1. Locate Config File 
-    # We don't know the dataset name easily unless we scan, 
-    # but we saved it as 'config_<name>.py'. 
-    # Let's find the only python file starting with config_ in that dir.
     try:
         config_files = [f for f in os.listdir(vectors_dir) if f.startswith('config_') and f.endswith('.py')]
         if not config_files:
@@ -1377,7 +1381,7 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
         # Dynamic Import
         spec = importlib.util.spec_from_file_location("dset_config", config_path)
         dset_config = importlib.util.module_from_spec(spec)
-        sys.modules["dset_config"] = dset_config
+        # FIX: Do not inject into sys.modules to avoid race conditions
         spec.loader.exec_module(dset_config)
         
     except Exception as e:
@@ -1391,7 +1395,6 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
     elif hasattr(dset_config, 'dims'):
         dims_to_train = dset_config.dims
     else:
-        # Fallback
         dims_to_train = [64]
 
     dsdb.update_job(job_id, stage='training', progress=5, message=f'Starting training for dims: {dims_to_train}')
@@ -1404,9 +1407,7 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
             msg = f"Training latent_dim={dim} ({i+1}/{total_dims})"
             dsdb.update_job(job_id, message=msg)
             
-            # Run the training (synchronous)
-            # We catch errors per dimension so one failure doesn't kill the whole batch?
-            # Or fail hard? Let's fail hard for safety.
+            # Pass the loaded dset_config object explicitly
             train_vae(
                 dataset_id=dataset_id, 
                 job_id=job_id, 
@@ -1416,11 +1417,6 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
                 dsdb=dsdb
             )
             
-            # Update overall progress (if running multiple dims)
-            # Note: The callback inside train_vae updates progress 10-90.
-            # If we have multiple dims, we might want to manage progress differently,
-            # but for now, the UI will see the bar fill up for each dim.
-
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1467,7 +1463,7 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
         for index, dim in enumerate(trained_dims):
             msg = f"Running PCA on latent dim {dim} ({index + 1}/{total})"
             
-            # Calculate progress slice (e.g., if 2 dims, 0-50% then 50-100%)
+            # Calculate progress slice
             prog_start = int((index / total) * 100)
             dsdb.update_job(job_id, progress=prog_start, message=msg)
 

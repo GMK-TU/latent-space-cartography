@@ -13,7 +13,7 @@ from PIL import Image
 
 from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger, Callback, ReduceLROnPlateau
 from keras import backend as K
-import model  # Assumes model.py is in the same folder
+from model import model
 
 class DbProgressCallback(Callback):
     """Updates the database with training progress per epoch."""
