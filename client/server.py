@@ -1214,6 +1214,31 @@ def start_pca(dataset_id):
     job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (pca)…", job_stage="queued")
     return jsonify({'jobId': job_id}), 200
 
+@app.route('/api/datasets/<dataset_id>/pipeline', methods=['POST'])
+def start_pipeline(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    params = request.get_json(silent=True) or {}
+    vec_params = params.get("vectorize", {})
+    train_params = params.get("train", {})
+    pca_params = params.get("pca", {})
+
+    def worker(dataset_id, job_id, params):
+        dsdb_local = _require_ds_db()
+        if dsdb_local is None:
+            return
+
+        def fn():
+            make_dataset_job(dataset_id, job_id, vec_params, dsdb_local)
+            train_dataset_job(dataset_id, job_id, train_params, dsdb_local)
+            run_pca_job(dataset_id, job_id, pca_params, dsdb_local)
+
+        _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Running pipeline…")
+
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (pipeline)…", job_stage="queued")
+    return jsonify({'jobId': job_id}), 200
 
 @app.route('/api/jobs/<job_id>', methods=['GET'])
 def get_job(job_id):
