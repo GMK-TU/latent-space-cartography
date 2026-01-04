@@ -113,7 +113,7 @@ const actions = {
     patch(datasetId, {
       status: DatasetStatus.UPLOADING_CSV,
       progress: Math.max(0, Number(weightStart) || 0),
-      message: "Uploading metadata…",
+      message: "Uploading metadata...",
       error: null,
     });
 
@@ -154,7 +154,7 @@ const actions = {
           patch(datasetId, {
             status: evt.done ? DatasetStatus.READY : DatasetStatus.COMPUTING,
             progress: Math.round(overall),
-            message: evt.message || (evt.done ? "Ready." : "Computing…"),
+            message: evt.message || (evt.done ? "Ready." : "Computing..."),
             jobStage: evt.stage,
             jobStageProgress: evt.stageProgress,
             jobId,
@@ -174,6 +174,78 @@ const actions = {
       throw e;
     }
   },
+  async _startJobGeneric(datasetId, startFn, { weightStart = 35, weightEnd = 100, finalStatus = DatasetStatus.READY, startMessage = "Starting..." } = {}) {
+      patch(datasetId, {
+        status: DatasetStatus.COMPUTING,
+        progress: Math.round(weightStart),
+        message: startMessage,
+        error: null,
+      });
+
+      let stop = null;
+
+      try {
+        const { jobId } = await startFn();
+
+        stop = subscribeJobProgress({
+          jobId,
+          onEvent: (evt) => {
+            const overall = lerp(weightStart, weightEnd, evt.overallProgress / 100);
+            patch(datasetId, {
+              status: evt.done ? finalStatus : DatasetStatus.COMPUTING,
+              progress: Math.round(overall),
+              message: evt.message || (evt.done ? "Done." : "Working..."),
+              jobStage: evt.stage,
+              jobStageProgress: evt.stageProgress,
+              jobId,
+            });
+          },
+          onError: (err) => {
+            patch(datasetId, { status: DatasetStatus.ERROR, message: "Job error.", error: String(err) });
+            setError(err);
+          },
+        });
+
+        return { jobId, stop };
+      } catch (e) {
+        if (stop) stop();
+        patch(datasetId, { status: DatasetStatus.ERROR, message: "Failed to start job.", error: String(e) });
+        setError(e);
+        throw e;
+      }
+    },
+    async startVectorize(datasetId, params) {
+      return actions._startJobGeneric(
+        datasetId,
+        () => api.startVectorize(datasetId, params),
+        { finalStatus: DatasetStatus.VECTORS_READY, startMessage: "Starting vectorization..." }
+      );
+    },
+
+    async startTrain(datasetId, params) {
+      return actions._startJobGeneric(
+        datasetId,
+        () => api.startTrain(datasetId, params),
+        { finalStatus: DatasetStatus.TRAINED, startMessage: "Starting training..." }
+      );
+    },
+
+    async startPca(datasetId, params) {
+      return actions._startJobGeneric(
+        datasetId,
+        () => api.startPca(datasetId, params),
+        { finalStatus: DatasetStatus.READY, startMessage: "Starting PCA…" }
+      );
+    },
+
+    async startPipeline(datasetId, params) {
+      return actions._startJobGeneric(
+        datasetId,
+        () => api.startPipeline(datasetId, params),
+        { finalStatus: DatasetStatus.READY, startMessage: "Starting pipeline..." }
+      );
+    },
+
 };
 
 // --- derived helpers ---

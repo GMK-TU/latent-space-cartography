@@ -110,6 +110,53 @@ export async function startComputations(datasetId) {
   return jsonOrThrow(res);
 }
 
+export async function startVectorize(datasetId, params) {
+  const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/vectorize`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params || {}),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function startTrain(datasetId, params) {
+  const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/train`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params || {}),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function startPca(datasetId, params) {
+  const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/pca`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params || {}),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function startPipeline(datasetId, params) {
+  const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/pipeline`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params || {}),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function getLatestDatasetJob(datasetId) {
+  const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/jobs/latest`), {
+    credentials: "include",
+  });
+  return jsonOrThrow(res);
+}
+
 /**
  * Fetch dataset detail (status/progress/message/etc).
  * Expected response: Dataset object
