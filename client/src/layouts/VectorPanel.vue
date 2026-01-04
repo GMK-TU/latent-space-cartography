@@ -123,6 +123,7 @@
 </template>
 
 <script>
+  import { datasetStore } from "@/datasets/datasetStore";
   import {store, CONFIG, bus} from '../controllers/config'
   import moment from 'moment'
   import GroupModal from './GroupModal.vue'
@@ -133,6 +134,11 @@
 
   export default {
     name: 'VectorPanel',
+    computed: {
+      datasetId() {
+        return datasetStore.state.activeDatasetId;
+      }
+    },
     props: {
       latent_dim: {
         type: Number,
@@ -197,19 +203,23 @@
             this.drawPairs(v)
           }
         }
+      },
+      datasetId: {
+        immediate: true,
+        handler(newId) {
+          if (!newId) return;
+          this.fetchVectors(newId).then(() => {
+            // register callback
+            // plotting has to be after fetching
+            bus.$on('chart-ready', this.plotVectors)
+          })
+        }
       }
     },
     mounted: function () {
       // register event
       bus.$on('draw-focus-vec', this.plotVectors)
       bus.$on('draw-pairs', this.drawPairs)
-
-      this.fetchVectors()
-        .then(() => {
-          // register callback
-          // plotting has to be after fetching
-          bus.$on('chart-ready', this.plotVectors)
-        })
     },
     beforeDestroy () {
       // unregister event

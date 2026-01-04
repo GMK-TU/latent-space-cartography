@@ -10,6 +10,11 @@ const nPC = 4
  */
 class Store {
   constructor () {
+
+    /**
+     * The currently selected dataset
+     */
+    this.datasetId = null;
     /**
      * Dictionary to save PCA points, key by latent dimension
      */
@@ -74,11 +79,32 @@ class Store {
     }
   }
 
+  setDataset(datasetId) {
+    if (this.datasetId === datasetId) return;
+
+    this.datasetId = datasetId;
+
+    // Clear cached per-dataset data so getMeta() refetches
+    this.pca = {}
+    this.umap = {}
+    this.tsne = {}
+    this.meta = []
+    this.header = []
+    this.selected = []
+    this.groups = []
+  }
+
+
   /**
    * Async get the image meta data from server.
    * @returns {Promise}
    */
   getMeta () {
+    if (!this.datasetId) {
+      reject(new Error("No datasetId set. Call store.setDataset(id) first."));
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       // we already have the meta data locally
       if (this.meta.length) {
@@ -91,7 +117,7 @@ class Store {
       let schema_header = CONFIG.schema.header
 
       // go fetch from the server
-      http.post('/api/get_meta', {})
+      http.post('/api/get_meta', { dataset_id: this.datasetId })
         .then((response) => {
           let msg = response.data
 
@@ -135,7 +161,7 @@ class Store {
         return
       }
 
-      let payload = {'latent_dim': dim, 'pca_dim': pca_dim, 'indices': []}
+      let payload = {dataset_id: this.datasetId, 'latent_dim': dim, 'pca_dim': pca_dim, 'indices': []}
 
       this.getMeta()
         .then(() => {
@@ -175,7 +201,7 @@ class Store {
         return
       }
 
-      let payload = {'latent_dim': dim, 'n_neighbors': nn, 'min_dist': dist}
+      let payload = {dataset_id: this.datasetId, 'latent_dim': dim, 'n_neighbors': nn, 'min_dist': dist}
 
       this.getMeta()
         .then(() => {
@@ -203,7 +229,7 @@ class Store {
    */
   customPca (dim, subset = []) {
     return new Promise((resolve, reject) => {
-      let payload = {'latent_dim': dim, 'pca_dim': 2, 'indices': subset}
+      let payload = {dataset_id: this.datasetId, 'latent_dim': dim, 'pca_dim': 2, 'indices': subset}
 
       http.post('/api/get_pca', payload)
         .then((response) => {
@@ -259,7 +285,7 @@ class Store {
         return
       }
 
-      let payload = {'latent_dim': dim, 'perplexity': perp, 'pca': pca}
+      let payload = {dataset_id: this.datasetId, 'latent_dim': dim, 'perplexity': perp, 'pca': pca}
 
       this.getMeta()
         .then(() => {
@@ -299,7 +325,7 @@ class Store {
    */
   getRaw (i) {
     return new Promise((resolve, reject) => {
-      http.post('/api/get_raw', {'i': i})
+      http.post('/api/get_raw', {dataset_id: this.datasetId, 'i': i})
         .then((response) => {
           let msg = response.data
 
@@ -325,7 +351,7 @@ class Store {
    */
   transformPoint (x, y, i) {
     return new Promise((resolve, reject) => {
-      let payload = {'latent_dim': this.latent_dim, 'x': x, 'y': y, 'i': i}
+      let payload = {dataset_id: this.datasetId, 'latent_dim': this.latent_dim, 'x': x, 'y': y, 'i': i}
 
       http.post('/api/pca_back', payload)
         .then((response) => {
@@ -452,7 +478,7 @@ class Store {
    */
   getVectors () {
     return new Promise((resolve, reject) => {
-      let payload = {}
+      let payload = { dataset_id: this.datasetId }
 
       http.post('/api/get_vectors', payload)
         .then((response) => {

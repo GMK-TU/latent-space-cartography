@@ -11,7 +11,7 @@ const config_default = {
   data_type: 'image',
   train_split: 13500,
   initial_dim: 32,
-  initial_projection: 't-SNE',
+  initial_projection: 'PCA',
   schema: {
     'type': {},
     'meta': ['i','name', 'mean_color', 'category', 'platform', 'version', 'codepoints', 'shortcode']

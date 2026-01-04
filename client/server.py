@@ -21,6 +21,7 @@ import math
 from werkzeug.utils import secure_filename
 from datasets_db import DatasetsDB
 from datasets_import import import_metadata_csv
+from datasets_schema import ensure_dataset_feature_tables
 import pandas as pd
 from PIL import Image
 import importlib.util
@@ -469,14 +470,19 @@ def get_umap ():
 # get pca data
 @app.route('/api/get_pca', methods=['POST'])
 def get_pca ():
+    if not request.json or not 'dataset_id' in request.json:
+        abort(400)
+
     if not request.json or not 'latent_dim' in request.json:
         abort(400)
+
+    dsid, payload = _get_dataset_id_from_request()
     
     latent_dim = request.json['latent_dim']
     pca_dim = int(request.json['pca_dim'])
     indices = np.asarray(request.json['indices'], dtype=np.int16)
 
-    rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
+    rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dsid, latent_dim))
 
     df = pd.read_hdf(rawpath, key="latent")
     raw = np.copy(df.drop(columns=['word']))
@@ -545,14 +551,16 @@ def get_tsne ():
 # get meta data
 @app.route('/api/get_meta', methods=['POST'])
 def get_meta ():
-    query = 'SELECT {} FROM {}_meta'.format(schema_meta, dset)
+    dsid, payload = _get_dataset_id_from_request()
+
+    query = 'SELECT {} FROM {}_meta'.format(schema_meta, dsid)
     cursor, conn = db.execute(query)
     data = [list(i) for i in cursor.fetchall()]
     reply = {'meta': data}
 
     # header is meta data on input data columns
     if schema_header:
-        query = 'SELECT {} FROM {}_header'.format(schema_header, dset)
+        query = 'SELECT {} FROM {}_header'.format(schema_header, dsid)
         cursor.execute(query)
         header = [list(i) for i in cursor.fetchall()]
         reply['header'] = header
@@ -867,13 +875,15 @@ def create_vector():
 # get all vectors
 @app.route('/api/get_vectors', methods=['POST'])
 def get_vectors ():
+    dsid, payload = _get_dataset_id_from_request()
+
     query = """
     SELECT a.id, a.description, a.timestamp, a.start, a.end, b.list AS list_start,
       c.list AS list_end, b.alias AS alias_start, c.alias AS alias_end
     FROM {}_vector a
     LEFT OUTER JOIN (SELECT id, list, alias FROM {}_group) AS b ON a.start = b.id
     LEFT OUTER JOIN (SELECT id, list, alias FROM {}_group) AS c ON a.end = c.id
-    """.format(dset, dset, dset)
+    """.format(dsid, dsid, dsid)
     cursor, conn = db.execute(query)
     data = [list(i) for i in cursor.fetchall()]
     return jsonify({'data': data[::-1]}), 200
@@ -967,6 +977,17 @@ def _require_ds_db():
             return None
     return _ds_db
 
+import re
+
+_DATASET_ID_RE = re.compile(r"^[a-zA-Z0-9_]{3,64}$")
+
+def _get_dataset_id_from_request():
+    payload = request.get_json(silent=True) or {}
+    dsid = payload.get("dataset_id") or dset  # fallback to legacy global
+    if not isinstance(dsid, str) or not _DATASET_ID_RE.match(dsid):
+        abort(400, description="Invalid dataset_id")
+    return dsid, payload
+
 def _dataset_root(dataset_id):
     return abs_path(f'./data/{dataset_id}')
 
@@ -999,6 +1020,7 @@ def list_datasets():
 
 @app.route('/api/datasets', methods=['POST'])
 def create_dataset():
+
     dsdb = _require_ds_db()
     if dsdb is None:
         return jsonify({'error':'dataset db not initialized'}), 500
@@ -1008,6 +1030,9 @@ def create_dataset():
     dataset_id = payload.get('id') or uuid.uuid4().hex[:12]
 
     _ensure_dirs(dataset_id)
+
+    ensure_dataset_feature_tables(dsdb.conn, dataset_id)
+
     ds = dsdb.create_dataset(dataset_id=dataset_id, name=name)
     return jsonify(ds), 200
 

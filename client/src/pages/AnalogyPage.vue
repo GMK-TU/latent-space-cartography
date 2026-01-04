@@ -127,6 +127,7 @@
 </template>
 
 <script>
+  import { datasetStore } from "@/datasets/datasetStore";
   import GroupPanel from '../layouts/GroupPanel.vue'
   import VectorPanel from '../layouts/VectorPanel.vue'
   import ChartButtons from '../layouts/ChartButtons.vue'
@@ -305,9 +306,17 @@
     watch: {
       view_state () {
         resetAxes.call(this)
+      },
+      activeDatasetId(newId) {
+        if (!newId) return;
+        store.setDataset(newId);
+        this.reloadForDataset();
       }
     },
     computed: {
+      activeDatasetId() {
+        return datasetStore.state.activeDatasetId;
+      },
       proj_state: function () {
         let code = this.view_state === 0 ? this.projection :
           this.view_state === 1 ? 'subset' : 'vector'
@@ -337,6 +346,11 @@
       }
     },
     mounted: function () {
+      const id = datasetStore.state.activeDatasetId;
+      if (id) {
+        store.setDataset(id);
+        this.reloadForDataset();
+      }
       // register all the callback of the D3 component
       customize_scatter.call(this, this.scatter)
       this.scatter.emitter.onSelected = (pts) => {
@@ -524,6 +538,11 @@
         resetAxes.call(this)
         // too lazy to rewrite ...
         this.changeDim(this.dim)
+      },
+      reloadForDataset() {
+        // whatever AnalogyPage currently does on initial load,
+        // but now it will fetch for the new dataset id
+        // e.g. refresh PCA/points, etc.
       }
     }
   }
