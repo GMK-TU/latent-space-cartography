@@ -1034,7 +1034,7 @@ def upload_raw_zip(dataset_id):
         return jsonify({'error':'empty filename'}), 400
 
     root, raw_dir, _ = _ensure_dirs(dataset_id)
-    dsdb.update_dataset(dataset_id, status='uploading_raw', progress=0, message='Uploading ZIP…')
+    dsdb.update_dataset(dataset_id, status='uploading_raw', progress=0, message='Uploading ZIP...')
 
     up_dir = os.path.join(root, 'uploads')
     os.makedirs(up_dir, exist_ok=True)
@@ -1043,7 +1043,7 @@ def upload_raw_zip(dataset_id):
     f.save(zip_path)
 
     # extract zip into raw_dir (flattening not enforced)
-    dsdb.update_dataset(dataset_id, status='uploading_raw', progress=10, message='Extracting ZIP…')
+    dsdb.update_dataset(dataset_id, status='uploading_raw', progress=10, message='Extracting ZIP...')
     try:
         with zipfile.ZipFile(zip_path, 'r') as zf:
             zf.extractall(raw_dir)
@@ -1113,16 +1113,27 @@ def _compute_worker(dataset_id, job_id):
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message='Done.', done=True)
     dsdb.update_dataset(dataset_id, status='ready', progress=100, message='Ready.')
 
+def _start_job_thread(dsdb, dataset_id: str, worker_fn, *, params=None, job_message="Queued…", job_stage="queued"):
+    job_id = uuid.uuid4().hex
+    dsdb.create_job(job_id=job_id, dataset_id=dataset_id, progress=0, message=job_message, stage=job_stage)
+
+    # ensure params is serializable dict
+    params = params or {}
+
+    t = threading.Thread(target=worker_fn, args=(dataset_id, job_id, params), daemon=True)
+    t.start()
+    return job_id
+
 @app.route('/api/datasets/<dataset_id>/compute', methods=['POST'])
 def start_compute(dataset_id):
     dsdb = _require_ds_db()
     if dsdb is None:
         return jsonify({'error':'dataset db not initialized'}), 500
 
-    job_id = uuid.uuid4().hex
-    dsdb.create_job(job_id=job_id, dataset_id=dataset_id, progress=0, message='Queued…', stage='queued')
-    t = threading.Thread(target=_compute_worker, args=(dataset_id, job_id), daemon=True)
-    t.start()
+    def worker(dataset_id, job_id, params):
+        _compute_worker(dataset_id, job_id)
+
+    job_id = _start_job_thread(dsdb, dataset_id, worker, job_message="Queued…", job_stage="queued")
     return jsonify({'jobId': job_id}), 200
 
 @app.route('/api/jobs/<job_id>', methods=['GET'])
