@@ -1145,6 +1145,25 @@ def start_compute(dataset_id):
     job_id = _start_job_thread(dsdb, dataset_id, worker, job_message="Queued…", job_stage="queued")
     return jsonify({'jobId': job_id}), 200
 
+@app.route('/api/datasets/<dataset_id>/vectorize', methods=['POST'])
+def start_vectorize(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+
+    params = request.get_json(silent=True) or {}
+
+    def worker(dataset_id, job_id, params):
+        dsdb_local = _require_ds_db()
+        if dsdb_local is None:
+            return
+        def fn():
+            make_dataset_job(dataset_id, job_id, params, dsdb_local)
+        _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Vectorizing…")
+
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (vectorize)…", job_stage="queued")
+    return jsonify({'jobId': job_id}), 200
+
 @app.route('/api/jobs/<job_id>', methods=['GET'])
 def get_job(job_id):
     dsdb = _require_ds_db()
@@ -1251,7 +1270,7 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
     ])
     
     if not filenames:
-        dsdb.update_job(job_id, status='error', message='No images found in raw directory.', done=True)
+        dsdb.update_job(job_id, status='error', message='No uploaded images were found. Your ZIP file must contain the images directly, not within a subfolder.', done=True)
         return
 
     vectors = []
