@@ -13,7 +13,7 @@ from PIL import Image
 # ---------------- CONFIG ----------------
 
 EMOJI_NAMES = [
-    "grinning-face", 'grinning-face-with-smiling-eyes',
+    "grinning-face", 'grinning-face-with-smiling-eyes', 'beaming-face-with-smiling-eyes'
     #'beaming-face-with-smiling-eyes', 'grinning-squinting-face', 'grinning-face-with-sweat',
     #'rolling-on-the-floor-laughing', 'face-with-tears-of-joy', 'slightly-smiling-face',
     #'upside-down-face', 'melting-face', 'winking-face', 'smiling-face-with-smiling-eyes',
@@ -171,7 +171,7 @@ def run_h5(out_h5: str):
 
     print(f"\nWrote {out_h5}: {X.shape[0]} images, vector length {X.shape[1]}")
 
-def run_zip_csv(out_zip: str, out_csv: str, zip_folder: str = "images"):
+def run_zip_csv(out_zip: str, out_csv: str):
     """
     Writes:
       - ZIP containing PNGs (resized to IMG_SIZE)
@@ -211,7 +211,7 @@ def run_zip_csv(out_zip: str, out_csv: str, zip_folder: str = "images"):
                         k += 1
                     used_keys.add(image_key)
 
-                    zip_path = f"{zip_folder}/{written}.png"
+                    zip_path = f"{written}.png"
                     zf.writestr(zip_path, image_to_png_bytes(img))
 
                     rows.append({
@@ -257,13 +257,12 @@ def main():
     p.add_argument("--out-h5", default=OUT_H5_DEFAULT, help="Output H5 path (mode=h5).")
     p.add_argument("--out-zip", default=OUT_ZIP_DEFAULT, help="Output ZIP path (mode=zipcsv).")
     p.add_argument("--out-csv", default=OUT_CSV_DEFAULT, help="Output CSV path (mode=zipcsv).")
-    p.add_argument("--zip-folder", default="images", help="Folder name inside ZIP (mode=zipcsv).")
     args = p.parse_args()
 
     if args.mode == "h5":
         run_h5(args.out_h5)
     else:
-        run_zip_csv(args.out_zip, args.out_csv, zip_folder=args.zip_folder)
+        run_zip_csv(args.out_zip, args.out_csv)
 
 if __name__ == "__main__":
     main()
