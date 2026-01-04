@@ -1124,6 +1124,15 @@ def _start_job_thread(dsdb, dataset_id: str, worker_fn, *, params=None, job_mess
     t.start()
     return job_id
 
+def _run_job_safely(dsdb, dataset_id, job_id, fn, *, start_status="computing", start_msg="Starting…"):
+    try:
+        dsdb.update_dataset(dataset_id, status=start_status, message=start_msg)
+        fn()
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', stage='error', message=str(e), done=True)
+        dsdb.update_dataset(dataset_id, status='error', message='Job failed.', error=str(e))
+        raise
+
 @app.route('/api/datasets/<dataset_id>/compute', methods=['POST'])
 def start_compute(dataset_id):
     dsdb = _require_ds_db()
