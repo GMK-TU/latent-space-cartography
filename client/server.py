@@ -1250,6 +1250,23 @@ def get_job(job_id):
         return jsonify({'error':'not found'}), 404
     return jsonify(job), 200
 
+@app.route('/api/datasets/<dataset_id>/jobs', methods=['GET'])
+def list_dataset_jobs(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+    limit = int(request.args.get("limit", "20"))
+    return jsonify(dsdb.list_jobs_for_dataset(dataset_id, limit=limit)), 200
+
+@app.route('/api/datasets/<dataset_id>/jobs/latest', methods=['GET'])
+def latest_dataset_job(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({'error':'dataset db not initialized'}), 500
+    job = dsdb.get_latest_job_for_dataset(dataset_id)
+    return jsonify(job or {}), 200
+
+
 def _exec_and_commit(query: str):
     cursor, conn = db.execute(query)
     db.safe_commit(conn, cursor)

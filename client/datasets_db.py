@@ -189,6 +189,25 @@ class DatasetsDB:
         d["done"] = bool(d.get("done", 0))
         return d
 
+    def list_jobs_for_dataset(self, dataset_id: str, limit: int = 20):
+        cur = self.conn.cursor()
+        cur.row_factory = sqlite3.Row
+        cur.execute(
+            """
+            SELECT job_id, dataset_id, status, progress, message, stage, done, created_at, updated_at
+            FROM dataset_jobs
+            WHERE dataset_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (dataset_id, int(limit)),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def get_latest_job_for_dataset(self, dataset_id: str):
+        rows = self.list_jobs_for_dataset(dataset_id, limit=1)
+        return rows[0] if rows else None
+
     def _dump(self, obj):
         try:
             return json.dumps(obj)
