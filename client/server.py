@@ -1032,7 +1032,7 @@ def create_dataset():
 
     payload = request.get_json(silent=True) or {}
     name = payload.get('name') or f'Dataset {time.strftime("%Y-%m-%d %H:%M:%S")}'
-    dataset_id = payload.get('id') or uuid.uuid4().hex[:12]
+    dataset_id = payload.get('id') or f'ds{uuid.uuid4().hex[:12]}'
 
     _ensure_dirs(dataset_id)
 
