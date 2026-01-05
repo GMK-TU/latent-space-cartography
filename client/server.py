@@ -28,6 +28,7 @@ import importlib.util
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from model.new_train import train_vae
 from model.pca import run_pca
+from model.tsne import run_tsne
 
 # ugly way to import a file from another directory ...
 sys.path.append(os.path.join(os.path.dirname(__file__), '../model'))
@@ -539,17 +540,27 @@ def pca_back ():
 
 # get tsne data
 @app.route('/api/get_tsne', methods=['POST'])
-def get_tsne ():
-    if not request.json or not 'latent_dim' in request.json:
+def get_tsne():
+    if not request.json or 'latent_dim' not in request.json:
         abort(400)
     
+    dsid, payload = _get_dataset_id_from_request()
+    
     latent_dim = request.json['latent_dim']
-    perp = request.json['perplexity']
-    suffix = '_pca' if request.json['pca'] else ''
-    fn = abs_path('./data/{}/tsne/tsne{}_perp{}{}.h5'.format(dset, latent_dim, perp, suffix))
-    with h5py.File(fn, 'r') as f:
-        data = np.asarray(f['tsne']) # shape: (n, 2)
-    print(fn)
+    perp = request.json.get('perplexity', 30) # Default to 30 if missing
+    
+    fn = abs_path(f'./data/{dsid}/models/{latent_dim}/tsne_perp{perp}.h5')
+    
+    if not os.path.exists(fn):
+        return jsonify({'error': f't-SNE file not found: {fn}'}), 404
+
+    try:
+        with h5py.File(fn, 'r') as f:
+            if 'tsne' not in f:
+                 return jsonify({'error': 'Key "tsne" not found in H5 file'}), 500
+            data = f['tsne'][:]
+    except Exception as e:
+        return jsonify({'error': f'Failed to read HDF5: {str(e)}'}), 500
 
     return jsonify({'data': data.tolist()}), 200
 
@@ -1641,6 +1652,59 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
     # 3. Finalize
     dsdb.update_dataset(dataset_id, status='ready', message='PCA complete. Dataset ready for visualization.')
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message='PCA calculation done.', done=True)
+
+def run_tsne_job(dataset_id, job_id, params, dsdb):
+    """
+    Worker to calculate t-SNE for various perplexities on trained models.
+    """
+    
+    # 1. Discover Trained Models
+    models_root = f'./data/{dataset_id}/models'
+    if not os.path.exists(models_root):
+        dsdb.update_job(job_id, status='error', message='No models directory found.', done=True)
+        return
+
+    # Find directories (latent dims)
+    trained_dims = [
+        int(d) for d in os.listdir(models_root) 
+        if os.path.isdir(os.path.join(models_root, d)) and d.isdigit()
+    ]
+    
+    if not trained_dims:
+        dsdb.update_job(job_id, status='error', message='No trained latent dimensions found.', done=True)
+        return
+
+    trained_dims.sort()
+    
+    # Define perplexities to run (Standard set from your original file)
+    perplexities = [5, 10, 30, 50, 100]
+    
+    total_steps = len(trained_dims) * len(perplexities)
+    current_step = 0
+
+    dsdb.update_job(job_id, stage='tsne', progress=0, message=f'Starting t-SNE for dims: {trained_dims}')
+
+    # 2. Process Loop
+    try:
+        for dim in trained_dims:
+            for perp in perplexities:
+                current_step += 1
+                progress = int((current_step / total_steps) * 100)
+                
+                msg = f"Running t-SNE (Dim: {dim}, Perp: {perp})"
+                dsdb.update_job(job_id, progress=progress, message=msg)
+                
+                # CALL THE TSNE FUNCTION
+                run_tsne(dataset_id, dim, perp)
+                
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        dsdb.update_job(job_id, status='error', message=f"t-SNE Failed: {str(e)}", done=True)
+        return
+
+    # 3. Finalize
+    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='t-SNE calculations complete.', done=True)
 
 if __name__ == '__main__':
     init_server()
