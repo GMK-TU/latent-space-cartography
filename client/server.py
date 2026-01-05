@@ -478,35 +478,41 @@ def get_pca():
         abort(400)
 
     dsid, payload = _get_dataset_id_from_request()
-    
+
     latent_dim = request.json['latent_dim']
-    pca_dim = int(request.json['pca_dim'])
-    indices = np.asarray(request.json['indices'], dtype=np.int16)
+    indices = np.asarray(request.json.get('indices', []), dtype=np.int16)
 
-    rawpath = abs_path(f'./data/{dsid}/models/{latent_dim}/latent_vectors.h5')
+    # Path to the PRE-CALCULATED result from the job
+    # File: ./data/{dsid}/models/{latent_dim}/pca_2d.h5
+    fn = abs_path(f'./data/{dsid}/models/{latent_dim}/pca_2d.h5')
 
-    if not os.path.exists(rawpath):
-         return jsonify({'error': f'Latent file not found at {rawpath}'}), 404
+    if not os.path.exists(fn):
+        return jsonify({'error': f'PCA file not found at {fn}. Did you run the PCA job?'}), 404
 
     try:
-        with h5py.File(rawpath, 'r') as f:
-            if 'vectors' not in f:
-                return jsonify({'error': 'Key "vectors" not found in H5 file'}), 500
-            raw = f['vectors'][:]
+        with h5py.File(fn, 'r') as f:
+            if 'pca' not in f:
+                return jsonify({'error': 'Key "pca" not found in H5 file'}), 500
+
+            # Load the pre-calculated 2D coordinates
+            data = f['pca'][:]  # shape: (Total_Images, 2)
+
+            # Load the explained variance (saved by run_pca)
+            if 'explained_variance' in f:
+                va = f['explained_variance'][:]
+            else:
+                va = [0, 0]  # Fallback if missing
+
     except Exception as e:
         return jsonify({'error': f'Failed to read HDF5: {str(e)}'}), 500
 
+    # Filter based on the indices requested by the frontend
     length = indices.shape[0]
     if length > 0:
-        raw = raw[indices]
+        # We only return the points corresponding to the currently filtered selection
+        data = data[indices]
 
-    pca = PCA(n_components=pca_dim)
-    d = pca.fit_transform(raw)
-    va = pca.explained_variance_ratio_
-
-    print(f'Explained variation per principal component: {va}')
-
-    return jsonify({'data': d.tolist(), 'variation': va.tolist()}), 200
+    return jsonify({'data': data.tolist(), 'variation': va.tolist()}), 200
 
 # PCA backward projection
 @app.route('/api/pca_back', methods=['POST'])
