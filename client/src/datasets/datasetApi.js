@@ -19,6 +19,18 @@ async function jsonOrThrow(res) {
   return res.json();
 }
 
+export async function loadConfig(datasetId) {
+  const res = await fetch(url(`/api/load_config`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ dataset_id: datasetId }),
+  });
+  const json = await jsonOrThrow(res);
+  return json.config; // { dims, capabilities, initial_dim, initial_projection, ... }
+}
+
+
 /**
  * List datasets visible to the user.
  * Expected response example:

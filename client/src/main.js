@@ -29,25 +29,12 @@ Vue.directive('click-outside', {
   },
 })
 
-/**
- * Load config file from server before initializing
- */
-http.post('/api/load_config', {})
-  .then((response) => {
-    let msg = response.data
-
-    if (msg) {
-      setConfig(msg.config)
-
-      /* eslint-disable no-new */
-      new Vue({
-        el: '#app',
-        router,
-        template: '<App/>',
-        components: { App },
-        mounted: function () {
-          log_debug('main.js', 'mounted()')
-        }
-      })
+  new Vue({
+    el: '#app',
+    router,
+    template: '<App/>',
+    components: { App },
+    mounted: function () {
+      log_debug('main.js', 'mounted()')
     }
-  }, () => {})
+  })

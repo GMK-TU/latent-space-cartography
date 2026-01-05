@@ -190,6 +190,10 @@
         }
       },
       proj_state (val) {
+        if (!this.chart || !this.chart._pairs || !this.chart._global_vectors) {
+          // chart not initialized yet
+          return
+        }
         this.chart._pairs.clear()
         this.chart._global_vectors.clear()
 

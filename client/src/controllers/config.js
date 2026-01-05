@@ -46,9 +46,24 @@ function log_debug (...args) {
   }
 }
 
-function setConfig (config) {
-  CONFIG = config
+function setConfig(serverCfg) {
+  const merged = { ...config_default, ...(serverCfg || {}) };
+
+  // normalize dims
+  merged.dims = Array.isArray(merged.dims) ? merged.dims : [];
+  if (merged.dims.length && !merged.dims.includes(merged.initial_dim)) {
+    merged.initial_dim = merged.dims[0];
+  }
+
+  // normalize projection
+  const avail = merged.capabilities?.projections || ["PCA", "t-SNE", "UMAP"];
+  if (!avail.includes(merged.initial_projection)) {
+    merged.initial_projection = avail[0] || "PCA";
+  }
+
+  CONFIG = merged;
 }
+
 
 /**
  * Shared store.

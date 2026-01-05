@@ -945,18 +945,30 @@ def get_compare_page ():
 # load client side config
 @app.route('/api/load_config', methods=['POST'])
 def load_config ():
-    # read json
-    fn = abs_path('./configs/config_{}.json'.format(dset))
-    with open(fn, 'r') as f:
-        cfg = json.load(f)
+    dsid, payload = _get_dataset_id_from_request()
 
-    # add more fields
-    cfg['dataset'] = dset
-    cfg['data_type'] = data_type
+    dims, caps = _discover_model_caps(dsid)
+
+    cfg = {}
+    # Optional: Load info from config file?
+    # cfg_path = abs_path(f'./data/img_vectors/{dsid}_config.json')
+    # if os.path.exists(cfg_path):
+    #     with open(cfg_path, 'r') as f:
+    #         cfg = json.load(f)
+
+    # Always provide these fields:
+    cfg['dataset_id'] = dsid
     cfg['dims'] = dims
-    cfg['schema']['meta'] = [i.strip() for i in schema_meta.split(',')]
-    if schema_header:
-        cfg['schema']['header'] = [i.strip() for i in schema_header.split(',')]
+    cfg['capabilities'] = caps
+
+    # Choose sensible defaults based on availability
+    if dims and 'initial_dim' not in cfg:
+        cfg['initial_dim'] = dims[0]
+    if 'initial_projection' not in cfg:
+        # prefer PCA if available, else first available
+        cfg['initial_projection'] = 'PCA' if 'PCA' in caps.get('projections', []) else (
+        caps.get('projections', ['PCA'])[0])
+
     return jsonify({'config': cfg}), 200
 
 @app.route('/api/_compare_vectors', methods=['POST'])
@@ -1032,6 +1044,60 @@ def _preview_images(dataset_id, raw_dir, limit=12):
                 if len(imgs) >= limit:
                     return imgs
     return imgs
+
+def _discover_model_caps(dataset_id: str):
+    # This could be merged with what's stored in the config file...
+    models_root = abs_path(f'./data/{dataset_id}/models')
+
+    if not os.path.isdir(models_root):
+        return {"dims": {}, "projections": []}
+
+    dims = []
+    for name in os.listdir(models_root):
+        p = os.path.join(models_root, name)
+        if os.path.isdir(p) and name.isdigit():
+            dims.append(int(name))
+    dims.sort()
+
+
+    caps = {"dims": {}, "projections": []}
+    projections_set = set()
+
+    for dim in dims:
+        dim_dir = os.path.join(models_root, str(dim))
+
+        has_pca = os.path.exists(os.path.join(dim_dir, "pca_2d.h5"))
+
+        tsne_perps = []
+        for fn in os.listdir(dim_dir):
+            # matches: tsne_perp30.h5
+            if fn.startswith("tsne_perp") and fn.endswith(".h5"):
+                try:
+                    per = int(fn[len("tsne_perp"):-len(".h5")])
+                    tsne_perps.append(per)
+                except:
+                    pass
+        tsne_perps.sort()
+
+        # If you later store UMAP artifacts per dim, detect them here.
+        # (Right now your get_umap reads ./data/<dset>/umap/... legacy path.)
+        umap_params = []  # e.g. [{"n_neighbors":15,"min_dist":0.1}]
+
+        caps["dims"][str(dim)] = {
+            "pca": has_pca,
+            "tsne": tsne_perps,
+            "umap": umap_params
+        }
+
+        if has_pca:
+            projections_set.add("PCA")
+        if tsne_perps:
+            projections_set.add("t-SNE")
+        if umap_params:
+            projections_set.add("UMAP")
+
+    caps["projections"] = sorted(projections_set)
+    return dims, caps
 
 @app.route('/api/datasets', methods=['GET'])
 def list_datasets():

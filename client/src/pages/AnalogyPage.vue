@@ -138,7 +138,7 @@
   import BrushedList from '../layouts/BrushedList.vue'
 
   import Scatter from '../controllers/scatter_analogy'
-  import {store, bus, log_debug, CONFIG, DTYPE} from '../controllers/config'
+  import {store, bus, log_debug, CONFIG, DTYPE, setConfig} from '../controllers/config'
   import _ from 'lodash'
   import VueLoading from 'vue-loading-template'
   import FilterDropdown from '../layouts/FilterDropdown.vue'
@@ -346,11 +346,6 @@
       }
     },
     mounted: function () {
-      const id = datasetStore.state.activeDatasetId;
-      if (id) {
-        store.setDataset(id);
-        this.reloadForDataset();
-      }
       // register all the callback of the D3 component
       customize_scatter.call(this, this.scatter)
       this.scatter.emitter.onSelected = (pts) => {
@@ -377,6 +372,12 @@
           pt.clientY = y
         }
         store.state.detail = pt
+      }
+
+      const id = datasetStore.state.activeDatasetId;
+      if (id) {
+        store.setDataset(id);
+        this.reloadForDataset();
       }
 
       // register event
@@ -445,8 +446,28 @@
       },
 
       // change latent dimensions
-      changeDim (dim) {
-        this.dim = dim
+      changeDim (d) {
+        this.dim = d
+
+        const dimCaps = CONFIG.capabilities?.dims?.[String(d)] || {};
+        const projs = [];
+
+        if (dimCaps.pca) projs.push("PCA");
+        if (dimCaps.tsne?.length) projs.push("t-SNE");
+        if (dimCaps.umap?.length) projs.push("UMAP");
+
+        this.all_projections = projs.length ? projs : ["PCA"];
+        if (!this.all_projections.includes(this.projection)) {
+          this.projection = this.all_projections[0];
+        }
+
+        this.all_perplexity = dimCaps.tsne || [];
+        if (this.projection === "t-SNE" && this.all_perplexity.length) {
+          this.perplexity = this.all_perplexity.includes(this.perplexity)
+            ? this.perplexity
+            : this.all_perplexity[0];
+        }
+
         lets_load.call(this, () => {})
       },
 
@@ -539,10 +560,34 @@
         // too lazy to rewrite ...
         this.changeDim(this.dim)
       },
-      reloadForDataset() {
-        // whatever AnalogyPage currently does on initial load,
-        // but now it will fetch for the new dataset id
-        // e.g. refresh PCA/points, etc.
+      async reloadForDataset() {
+        const dsid = this.activeDatasetId;
+        if (!dsid) return;
+
+        // 1) fetch config for this dataset
+        const cfg = await datasetStore.actions.fetchDatasetConfig(dsid);
+        setConfig(cfg);
+
+        // 2) apply to local state (so dropdowns update immediately)
+        this.all_dims = CONFIG.dims;
+        this.dim = CONFIG.initial_dim || CONFIG.dims[0];
+        this.projection = CONFIG.initial_projection;
+
+        // 3) projection list based on availability
+        this.all_projections = CONFIG.capabilities?.projections?.length
+          ? CONFIG.capabilities.projections
+          : ['PCA', 't-SNE', 'UMAP'];
+
+        // 4) perplexities based on current dim (only if t-SNE available)
+        const dimCaps = CONFIG.capabilities?.dims?.[String(this.dim)];
+        this.all_perplexity = dimCaps?.tsne?.length ? dimCaps.tsne : [];
+        if (this.all_perplexity.length && !this.all_perplexity.includes(this.perplexity)) {
+          this.perplexity = this.all_perplexity[0];
+        }
+
+        // 5) reset view + reload points using your existing logic
+        this.view_state = 0;
+        this.showOriginal(); // or whatever your initial load function is
       }
     }
   }

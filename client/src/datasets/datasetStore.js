@@ -21,6 +21,9 @@ const state = Vue.observable({
   datasets: [],
   activeDatasetId: null,
 
+  configById: {},     // datasetId -> config
+  activeConfig: null, // convenience pointer
+
   // for UI convenience
   lastError: null,
 });
@@ -42,6 +45,19 @@ function setError(err) {
 
 // --- actions ---
 const actions = {
+  async fetchDatasetConfig(datasetId) {
+    try {
+      const cfg = await api.loadConfig(datasetId);
+      Vue.set(state.configById, datasetId, cfg);
+      if (state.activeDatasetId === datasetId) {
+        state.activeConfig = cfg;
+      }
+      return cfg;
+    } catch (e) {
+      setError(e);
+      throw e;
+    }
+  },
   async fetchDatasets() {
     try {
       const list = await api.listDatasets();
@@ -69,6 +85,7 @@ const actions = {
 
   setActiveDataset(id) {
     state.activeDatasetId = id;
+    state.activeConfig = state.configById[id] || null;
   },
 
   async refreshDataset(datasetId) {

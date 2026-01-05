@@ -784,7 +784,7 @@ class Store {
    * @returns {string}
    */
   getImageUrl (i) {
-    return `/data/${CONFIG.dataset}/images/${i}.${CONFIG.rendering.ext}`
+    return `/data/${CONFIG.dataset_id}/raw/${i}.${CONFIG.rendering.ext}`
   }
 
   getVectorName (v) {
