@@ -469,11 +469,11 @@ def get_umap ():
 
 # get pca data
 @app.route('/api/get_pca', methods=['POST'])
-def get_pca ():
-    if not request.json or not 'dataset_id' in request.json:
+def get_pca():
+    if not request.json or 'dataset_id' not in request.json:
         abort(400)
 
-    if not request.json or not 'latent_dim' in request.json:
+    if not request.json or 'latent_dim' not in request.json:
         abort(400)
 
     dsid, payload = _get_dataset_id_from_request()
@@ -482,23 +482,28 @@ def get_pca ():
     pca_dim = int(request.json['pca_dim'])
     indices = np.asarray(request.json['indices'], dtype=np.int16)
 
-    rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dsid, latent_dim))
+    rawpath = abs_path(f'./data/{dsid}/models/{latent_dim}/latent_vectors.h5')
 
-    df = pd.read_hdf(rawpath, key="latent")
-    raw = np.copy(df.drop(columns=['word']))
+    if not os.path.exists(rawpath):
+         return jsonify({'error': f'Latent file not found at {rawpath}'}), 404
 
-    # Original version. Check how to generalize.
-    #   with h5py.File(rawpath, 'r') as f:
-    #       raw = np.asarray(f['latent'])
+    try:
+        with h5py.File(rawpath, 'r') as f:
+            if 'vectors' not in f:
+                return jsonify({'error': 'Key "vectors" not found in H5 file'}), 500
+            raw = f['vectors'][:]
+    except Exception as e:
+        return jsonify({'error': f'Failed to read HDF5: {str(e)}'}), 500
+
     length = indices.shape[0]
     if length > 0:
         raw = raw[indices]
 
-        pca = PCA(n_components = pca_dim)
-        d = pca.fit_transform(raw)
-        va = pca.explained_variance_ratio_
+    pca = PCA(n_components=pca_dim)
+    d = pca.fit_transform(raw)
+    va = pca.explained_variance_ratio_
 
-    print('Explained variation per principal component: {}'.format(va))
+    print(f'Explained variation per principal component: {va}')
 
     return jsonify({'data': d.tolist(), 'variation': va.tolist()}), 200
 
