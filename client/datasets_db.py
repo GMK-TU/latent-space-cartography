@@ -23,6 +23,7 @@ class DatasetsDB:
         CREATE TABLE IF NOT EXISTS datasets (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'image',
           status TEXT NOT NULL DEFAULT 'empty',
           progress INTEGER NOT NULL DEFAULT 0,
           message TEXT DEFAULT '',
@@ -61,16 +62,16 @@ class DatasetsDB:
         r = cur.fetchone()
         return self._deserialize_dataset(dict(r)) if r else None
 
-    def create_dataset(self, dataset_id: str, name: str):
+    def create_dataset(self, dataset_id: str, name: str, type: str = "image"):
         cur = self.conn.cursor()
         created_at = _now()
         cur.execute(
             """
             INSERT OR REPLACE INTO datasets
-              (id, name, status, progress, message, created_at)
-            VALUES (?, ?, 'empty', 0, '', ?)
+              (id, name, type, status, progress, message, created_at)
+            VALUES (?, ?, ?, 'empty', 0, '', ?)
             """,
-            (dataset_id, name, created_at),
+            (dataset_id, name, type, created_at),
         )
         self.conn.commit()
         return self.get_dataset(dataset_id)
@@ -99,13 +100,14 @@ class DatasetsDB:
         cur.execute(
             """
             INSERT OR REPLACE INTO datasets
-              (id, name, status, progress, message, error,
+              (id, name, type, status, progress, message, error,
                preview_images, preview_meta, matched_preview, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 dataset_id,
                 ds.get("name", dataset_id),
+                ds.get("type", "image"),
                 status,
                 progress,
                 message,
