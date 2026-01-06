@@ -1115,13 +1115,16 @@ def create_dataset():
 
     payload = request.get_json(silent=True) or {}
     name = payload.get('name') or f'Dataset {time.strftime("%Y-%m-%d %H:%M:%S")}'
+    ds_type = payload.get("type") or "image"
+    if ds_type not in ("image", "latent"):
+        return jsonify({"error": "Invalid dataset type"}), 400
     dataset_id = payload.get('id') or f'ds{uuid.uuid4().hex[:12]}'
 
     _ensure_dirs(dataset_id)
 
     ensure_dataset_feature_tables(dsdb.conn, dataset_id)
 
-    ds = dsdb.create_dataset(dataset_id=dataset_id, name=name)
+    ds = dsdb.create_dataset(dataset_id=dataset_id, name=name, type=ds_type)
     return jsonify(ds), 200
 
 @app.route('/api/datasets/<dataset_id>', methods=['GET'])
