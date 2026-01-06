@@ -79,19 +79,23 @@ class Store {
     }
   }
 
+  _clear(object) {
+    Object.keys(object).forEach(k => delete object[k]);
+  }
+
   setDataset(datasetId) {
     if (this.datasetId === datasetId) return;
 
     this.datasetId = datasetId;
 
     // Clear cached per-dataset data so getMeta() refetches
-    this.pca = {}
-    this.umap = {}
-    this.tsne = {}
-    this.meta = []
-    this.header = []
-    this.selected = []
-    this.groups = []
+    this._clear(this.pca);
+    this._clear(this.umap);
+    this._clear(this.tsne);
+    this.meta.length = 0;
+    this.header.length = 0;
+    this.selected.length = 0;
+    this.groups.length = 0;
   }
 
 
@@ -740,7 +744,7 @@ class Store {
         return resolve(0)
       }
 
-      let payload = {'latent_dim': latent_dim, ids: ids}
+      let payload = {'latent_dim': latent_dim, ids: ids, dataset_id: this.datasetId}
 
       http.post('/api/cluster_score', payload)
         .then((response) => {

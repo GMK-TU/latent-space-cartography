@@ -383,15 +383,6 @@
       // register event
       bus.$on('highlight-subset', this.onToggleSubset)
       bus.$on('highlight', this.onHighlight)
-
-      // Get points from server
-      lets_load.call(this, () => {
-        // set only once, since what really matters is the meta
-        this.suggestions = store.meta
-
-        // broadcast that the main chart has been initialized
-        bus.$emit('chart-ready')
-      })
     },
     methods: {
       // helper
@@ -563,6 +554,12 @@
       async reloadForDataset() {
         const dsid = this.activeDatasetId;
         if (!dsid) return;
+
+        // ensure meta exists for the selected dataset
+        await store.getMeta(); // must use store.datasetId internally
+
+        // now suggestions can safely depend on meta
+        this.suggestions = store.meta;
 
         // 1) fetch config for this dataset
         const cfg = await datasetStore.actions.fetchDatasetConfig(dsid);
