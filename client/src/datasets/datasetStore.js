@@ -13,7 +13,7 @@
 
 import Vue from "vue";
 
-import { DatasetStatus } from "./datasetTypes";
+import { DatasetStatus, DatasetType } from "./datasetTypes";
 import * as api from "./datasetApi";
 import { subscribeJobProgress } from "./jobProgress";
 
@@ -278,6 +278,7 @@ function normalizeDataset(d) {
     return {
       id: "",
       name: "Untitled",
+      type: d.type || DatasetType.IMAGE,
       createdAt: new Date().toISOString(),
       status: DatasetStatus.EMPTY,
       progress: 0,

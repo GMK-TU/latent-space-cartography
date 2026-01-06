@@ -1,8 +1,15 @@
 // Dataset domain types / enums (JS-friendly)
+export const DatasetType = Object.freeze({
+  IMAGE: "image",
+  LATENT: "latent",
+});
+
 export const DatasetStatus = Object.freeze({
   EMPTY: "empty",
   UPLOADING_RAW: "uploading_raw",
   RAW_UPLOADED: "raw_uploaded",
+  UPLOADING_LATENT: "uploading_latent",
+  LATENT_UPLOADED: "latent_uploaded",
   UPLOADING_CSV: "uploading_csv",
   CSV_UPLOADED: "csv_uploaded",
   COMPUTING: "computing",
