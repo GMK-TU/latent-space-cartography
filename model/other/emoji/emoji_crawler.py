@@ -79,8 +79,8 @@ BASE_URLS = {
 IMG_SIZE = (64, 64)
 KEY_RAW = "emoji"
 OUT_H5_DEFAULT = "emoji.h5"
-OUT_ZIP_DEFAULT = "emoji_images (68).zip"
-OUT_CSV_DEFAULT = "emoji_meta (68).csv"
+OUT_ZIP_DEFAULT = "emoji_images.zip"
+OUT_CSV_DEFAULT = "emoji_meta.csv"
 SLEEP = 0.2
 
 session = requests.Session()
