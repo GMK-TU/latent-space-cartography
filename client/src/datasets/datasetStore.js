@@ -62,6 +62,9 @@ const actions = {
     try {
       const list = await api.listDatasets();
       state.datasets = Array.isArray(list) ? list.map(normalizeDataset) : [];
+
+      console.log("datasets: " + JSON.stringify(state.datasets))
+
       if (!state.activeDatasetId && state.datasets.length) {
         state.activeDatasetId = state.datasets[0].id;
       }
@@ -151,46 +154,69 @@ const actions = {
     }
   },
 
-  /*async startComputations(datasetId, { weightStart = 35, weightEnd = 100 } = {}) {
+  async uploadLatentText(datasetId, file, params, { weightStart = 0, weightEnd = 25 } = {}) {
     patch(datasetId, {
-      status: DatasetStatus.COMPUTING,
-      progress: Math.round(weightStart),
-      message: "Starting computations…",
+      status: DatasetStatus.UPLOADING_LATENT,
+      progress: Math.max(0, Number(weightStart) || 0),
+      message: "Uploading latent space…",
       error: null,
     });
 
     let stop = null;
 
     try {
-      const { jobId } = await api.startComputations(datasetId);
+      // 1) Upload (XHR) + upload progress
+      const res = await api.uploadLatentText(datasetId, file, params, (fraction) => {
+        const p = lerp(weightStart, weightEnd, fraction);
+        patch(datasetId, { progress: Math.round(p) });
+      });
+
+      const jobId = res.jobId;
+
+      // 2) After upload: backend continues as a job → stream SSE progress
+      patch(datasetId, {
+        status: DatasetStatus.COMPUTING,
+        message: "Importing latent space…",
+        jobId,
+      });
 
       stop = subscribeJobProgress({
         jobId,
         onEvent: (evt) => {
-          const overall = evt.overallProgress;
+          const mapped = lerp(weightStart, weightEnd, (evt.overallProgress || 0) / 100);
+
           patch(datasetId, {
-            status: evt.done ? DatasetStatus.READY : DatasetStatus.COMPUTING,
-            progress: Math.round(overall),
-            message: evt.message || (evt.done ? "Ready." : "Computing..."),
+            status: evt.done ? DatasetStatus.LATENT_UPLOADED : DatasetStatus.COMPUTING,
+            progress: evt.done ? Math.round(weightEnd) : Math.round(mapped),
+            message: evt.message || (evt.done ? "Latent space uploaded." : "Importing latent space…"),
             jobStage: evt.stage,
             jobStageProgress: evt.stageProgress,
             jobId,
           });
         },
         onError: (err) => {
-          patch(datasetId, { status: DatasetStatus.ERROR, message: "Computation error.", error: String(err) });
+          patch(datasetId, {
+            status: DatasetStatus.ERROR,
+            message: "Latent import error.",
+            error: String(err),
+          });
           setError(err);
         },
       });
 
-      return { jobId, stop };
+      return res;
     } catch (e) {
       if (stop) stop();
-      patch(datasetId, { status: DatasetStatus.ERROR, message: "Failed to start computations.", error: String(e) });
+      patch(datasetId, {
+        status: DatasetStatus.ERROR,
+        message: "Latent upload/import failed.",
+        error: String(e),
+      });
       setError(e);
       throw e;
     }
-  },*/
+  },
+
   async _startJobGeneric(datasetId, startFn, { weightStart, weightEnd, finalStatus = DatasetStatus.READY, startMessage = "Starting..." } = {}) {
       patch(datasetId, {
         status: DatasetStatus.COMPUTING,
@@ -289,6 +315,7 @@ function normalizeDataset(d) {
   return {
     id: d.id,
     name: d.name || "Untitled",
+    type: d.type || DatasetType.IMAGE,
     createdAt: d.createdAt || new Date().toISOString(),
     status: d.status || DatasetStatus.EMPTY,
     progress: typeof d.progress === "number" ? d.progress : 0,

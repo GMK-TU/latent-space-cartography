@@ -63,22 +63,61 @@
     </div>
 
     <div v-else class="import__body">
-      <div class="import__steps">
-        <button type="button" class="import__step" :data-active="step === 1" @click="step = 1">1. Images (ZIP)</button>
-        <button type="button" class="import__step" :disabled="inferredStep < 1" :data-active="step === 2" @click="step = 2">2. Metadata (CSV)</button>
-        <button type="button" class="import__step" :disabled="inferredStep < 2" :data-active="step === 3" @click="step = 3">3. Compute</button>
-      </div>
+    <div class="import__steps">
+      <button type="button" class="import__step" :data-active="step === 1" @click="step = 1">
+        1. {{ isLatent ? "Latent space" : "Images (ZIP)" }}
+      </button>
+
+      <button v-if="!isLatent" type="button" class="import__step" :disabled="inferredStep < 1"
+              :data-active="step === 2" @click="step = 2">
+        2. Metadata (CSV)
+      </button>
+
+      <button type="button" class="import__step"
+        :disabled="isLatent ? !active || active.status !== DatasetStatus.LATENT_UPLOADED : inferredStep < 2"
+        :data-active="step === 3"
+        @click="step = 3">
+          {{ isLatent ? "2. Compute" : "3. Compute" }}
+        </button>
+
+    </div>
 
       <div class="import__panel" v-if="step === 1">
-        <h2>Step 1: Upload raw dataset (e.g., images in a ZIP)</h2>
-        <input type="file" accept=".zip" @change="onZipSelected" />
-        <div class="import__hint" v-if="!active.previewImages || !active.previewImages.length">
-          After upload, we show the first few images.
-        </div>
-        <DatasetPreview :images="active.previewImages" />
-      </div>
+          <h2 v-if="!isLatent">Step 1: Upload raw dataset (images in a ZIP)</h2>
+          <h2 v-else>Step 1: Upload latent space (text vectors)</h2>
 
-      <div class="import__panel" v-else-if="step === 2">
+          <!-- Image import -->
+          <div v-if="!isLatent">
+            <input type="file" accept=".zip" @change="onZipSelected" />
+            <div class="import__hint" v-if="!active.previewImages || !active.previewImages.length">
+              After upload, we show the first few images.
+            </div>
+            <DatasetPreview :images="active.previewImages" />
+          </div>
+
+          <!-- Latent import -->
+          <div v-else>
+            <div class="import__grid">
+              <label class="import__label">
+                Latent dim
+                <input class="import__input" type="number" min="1" v-model.number="latent.latent_dim" />
+              </label>
+
+              <label class="import__label">
+                Sample %
+                <input class="import__input" type="number" min="1" max="100" v-model.number="latent.sample_percentage" />
+              </label>
+            </div>
+
+            <input type="file" accept=".txt" @change="onLatentSelected" />
+            <div class="import__hint">
+              Expected format: one row per item: <code>token v1 v2 ...</code>
+            </div>
+          </div>
+        </div>
+
+
+      <div class="import__panel" v-else-if="step === 2 && !isLatent">
         <h2>Step 2: Upload metadata (e.g., a CSV file)</h2>
         <input type="file" accept=".csv,text/csv" @change="onCsvSelected" />
         <div class="import__hint">After upload, we show the first few metadata rows and a matched preview if available.</div>
@@ -88,10 +127,15 @@
         <div class="import__panel" v-else>
           <h2>Step 3: Run pipeline</h2>
 
+          <div v-if="isLatent" class="import__hint">
+            This dataset is a precomputed latent space. Only PCA and t-SNE are available.
+          </div>
+
           <div class="import__hint">
             Configure vectorization + training parameters and run steps. Progress updates live.
           </div>
 
+          <div v-if="!isLatent">
           <h3>Vectorization</h3>
           <div class="import__grid">
             <label>Width <input type="number" v-model.number="vec.width" /></label>
@@ -124,6 +168,15 @@
             Run training
           </button>
 
+          <h3>All-in-one</h3>
+          <button class="import__btnPrimary" type="button"
+            :disabled="pipelineDisabled"
+            @click="startPipeline">
+            Run full pipeline
+          </button>
+
+          </div>
+
           <h3>PCA</h3>
           <button class="import__btnPrimary" type="button" :disabled="pcaDisabled" @click="startPca">
             Run PCA
@@ -137,13 +190,6 @@
           </div>
           <button class="import__btnPrimary" type="button" :disabled="tsneDisabled" @click="startTsne">
             Run t-SNE
-          </button>
-
-          <h3>All-in-one</h3>
-          <button class="import__btnPrimary" type="button"
-            :disabled="pipelineDisabled"
-            @click="startPipeline">
-            Run full pipeline
           </button>
 
           <div class="import__hint" v-if="active.jobStage">
@@ -170,12 +216,15 @@ export default {
   components: { DatasetProgress, DatasetStatusBadge, DatasetPreview },
   data() {
     return {
+      DatasetStatus,
       store: datasetStore,
       step: 1,
 
       // Create dataset dialog
       createDialogOpen: false,
       newDataset: { name: `Dataset ${new Date().toLocaleString()}`, type: "image" },
+
+      latent: { latent_dim: 50, sample_percentage: 100 },
 
       vec: { width: 64, height: 64, train_pct: 80, latent_dims: "8,16", dataset_name: "", img_mode: "RGB" },
       train: { epochs: 5 },
@@ -185,6 +234,11 @@ export default {
   computed: {
     datasets() {
       return this.store.state.datasets || [];
+    },
+    isLatent() {
+      let latent =  this.active && this.active.type === "latent";
+      console.log('isLatent: ' + latent + ' - ' + this.active.type + ', name: ' + this.active.name);
+      return latent;
     },
     activeId() {
       return this.store.state.activeDatasetId;
@@ -206,26 +260,42 @@ export default {
     },
     vectorizeDisabled() {
       if (!this.active) return true;
+      if (this.isLatent) return true;
       if (this.active.status !== DatasetStatus.CSV_UPLOADED) return true;
       return this.computingDisabled;
     },
     trainDisabled() {
+      if (this.isLatent) return true;
       if (!this.active) return true;
       if (this.active.status !== DatasetStatus.VECTORS_READY) return true;
       return this.computingDisabled;
     },
     pcaDisabled() {
       if (!this.active) return true;
+
+      if (this.isLatent) {
+        // Allow PCA after latent upload (or re-run when READY)
+        if (![DatasetStatus.LATENT_UPLOADED, DatasetStatus.READY].includes(this.active.status)) return true;
+        return this.computingDisabled;
+      }
+
       if (![DatasetStatus.VECTORS_READY, DatasetStatus.TRAINED].includes(this.active.status)) return true;
       return this.computingDisabled;
     },
     tsneDisabled() {
       if (!this.active) return true;
+
+      if (this.isLatent) {
+        // Simplest: allow once latent is uploaded (tsne can run; it can compute PCA internally or use existing PCA)
+        if (![DatasetStatus.LATENT_UPLOADED, DatasetStatus.READY].includes(this.active.status)) return true;
+        return this.computingDisabled;
+      }
       if (![DatasetStatus.TRAINED, DatasetStatus.READY].includes(this.active.status)) return true;
       return this.computingDisabled;
     },
     pipelineDisabled() {
       if (!this.active) return true;
+      if (this.isLatent) return true;
       if (this.active.status !== DatasetStatus.CSV_UPLOADED) return true;
       return this.computingDisabled;
     },
@@ -253,18 +323,41 @@ export default {
       let result = 1;
 
       if (this.active) {
-          const s = this.active.status;
+        const s = this.active.status;
+
+        if (this.isLatent) {
+          if (s === DatasetStatus.EMPTY || s === DatasetStatus.UPLOADING_LATENT)
+            result = 1;
+          if (s === DatasetStatus.LATENT_UPLOADED || s === DatasetStatus.COMPUTING)
+            result = 2;
+          if (s === DatasetStatus.READY || s === DatasetStatus.ERROR)
+            result = 2;
+        } else {
           if (s === DatasetStatus.EMPTY || s === DatasetStatus.UPLOADING_RAW)
             result = 1;
           if (s === DatasetStatus.RAW_UPLOADED || s === DatasetStatus.UPLOADING_CSV)
             result = 2;
           if (s === DatasetStatus.CSV_UPLOADED || s === DatasetStatus.COMPUTING || s === DatasetStatus.VECTORS_READY ||
-              s === DatasetStatus.TRAINED || s === DatasetStatus.READY || s === DatasetStatus.PCA_COMPLETED || s === DatasetStatus.ERROR )
+              s === DatasetStatus.TRAINED || s === DatasetStatus.READY || s === DatasetStatus.PCA_COMPLETED ||
+              s === DatasetStatus.READY || s === DatasetStatus.ERROR )
             result = 3;
+        }
       }
       console.log("inferStep returns " + result)
 
       return result;
+    },
+
+    async onLatentSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file || !this.activeId) return;
+
+      await this.store.actions.uploadLatentText(this.activeId, file, {
+        latent_dim: this.latent.latent_dim,
+        sample_percentage: this.latent.sample_percentage,
+      });
+
+      e.target.value = "";
     },
 
     onDatasetChange(e) {
@@ -274,6 +367,16 @@ export default {
     openCreateDialog() {
       this.newDataset = { name: `Dataset ${new Date().toLocaleString()}`, type: "image" };
       this.createDialogOpen = true;
+    },
+
+    async onLatentSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file || !this.activeId) return;
+      await this.store.actions.uploadLatentText(this.activeId, file, {
+        latent_dim: this.latent.latent_dim,
+        sample_percentage: this.latent.sample_percentage,
+      });
+      e.target.value = "";
     },
 
     async createFromDialog() {

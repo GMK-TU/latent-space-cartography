@@ -110,6 +110,37 @@ export async function uploadCsv(datasetId, file) {
   return jsonOrThrow(res);
 }
 
+export function uploadLatentText(datasetId, file, { latent_dim, sample_percentage } = {}, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url(`/api/datasets/${encodeURIComponent(datasetId)}/latent`));
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = (evt) => {
+      if (!evt.lengthComputable) return;
+      if (onProgress) onProgress(evt.loaded / evt.total);
+    };
+
+    xhr.onerror = () => reject(new Error("Upload failed"));
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 400) return reject(new Error(data.error || xhr.responseText));
+        resolve(data);
+      } catch (e) {
+        reject(e);
+      }
+    };
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("latent_dim", String(latent_dim));
+    if (sample_percentage != null) fd.append("sample_percentage", String(sample_percentage));
+    xhr.send(fd);
+  });
+}
+
+
 /**
  * Start server-side computations (latent space, PCA, etc.)
  * Expected response: { jobId }

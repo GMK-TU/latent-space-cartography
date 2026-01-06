@@ -63,7 +63,7 @@ class DB:
         try:
             cursor = self.conn.cursor()
             cursor.execute(query)
-        except: #TODO: handle specific error
+        except Exception as e: #TODO: handle specific error
             self.conn = sqlite3.connect(self.filename)
             print('sqlite3 connected!')
             cursor = self.conn.cursor()
@@ -1249,7 +1249,7 @@ def upload_latent(dataset_id):
 
     job_id = _start_job_thread(dsdb, dataset_id, worker, params=params,
                               job_message="Queued (latent import)...",
-                              job_stage="queued")
+                              job_stage="queued", progress = 25)
     return jsonify({"jobId": job_id}), 200
 
 def _compute_worker(dataset_id, job_id):
@@ -1281,7 +1281,7 @@ def _compute_worker(dataset_id, job_id):
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message='Done.', done=True)
     dsdb.update_dataset(dataset_id, status='ready', progress=100, message='Ready.')
 
-def _start_job_thread(dsdb, dataset_id: str, worker_fn, *, params=None, job_message="Queued…", job_stage="queued", progress):
+def _start_job_thread(dsdb, dataset_id: str, worker_fn, *, params=None, job_message="Queued...", job_stage="queued", progress):
     job_id = uuid.uuid4().hex
     dsdb.create_job(job_id=job_id, dataset_id=dataset_id, progress=progress, message=job_message, stage=job_stage)
 
