@@ -45,12 +45,12 @@ export async function listDatasets() {
  * Create a new dataset record (optional convenience).
  * Expected response: { id, name, createdAt, status, progress }
  */
-export async function createDataset({ name }) {
+export async function createDataset(payload) {
   const res = await fetch(url("/api/datasets"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name: payload.name, type: payload.type }),
   });
   return jsonOrThrow(res);
 }

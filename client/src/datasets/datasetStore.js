@@ -70,9 +70,9 @@ const actions = {
     }
   },
 
-  async createDataset(name) {
+  async createDataset({ name, type }) {
     try {
-      const ds = await api.createDataset({ name });
+      const ds = await api.createDataset({ name, type });
       const normalized = normalizeDataset(ds);
       state.datasets = [normalized, ...state.datasets];
       state.activeDatasetId = normalized.id;

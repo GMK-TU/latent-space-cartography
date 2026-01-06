@@ -10,7 +10,7 @@
           <option v-for="d in datasets" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
 
-        <button class="import__btn" type="button" @click="createNew">Import new dataset</button>
+        <button class="import__btn" type="button" @click="openCreateDialog">Import new dataset</button>
 
         <DatasetStatusBadge v-if="active" :status="active.status" />
 
@@ -22,6 +22,37 @@
       </div>
 
       <DatasetProgress v-if="active" :progress="active.progress" :message="active.message" />
+
+        <!-- Create dataset dialog -->
+        <div
+          v-if="createDialogOpen"
+          class="import__modalBackdrop"
+          @click.self="createDialogOpen = false"
+        >
+          <div class="import__modal">
+            <h2 class="import__modalTitle">Create dataset</h2>
+
+            <div class="import__grid">
+              <label class="import__label">
+                Name
+                <input class="import__input" type="text" v-model="newDataset.name" />
+              </label>
+
+              <label class="import__label">
+                Type
+                <select class="import__select" v-model="newDataset.type">
+                  <option value="image">Images</option>
+                  <option value="latent">Latent space</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="import__modalActions">
+              <button class="import__btn" type="button" @click="createDialogOpen = false">Cancel</button>
+              <button class="import__btnPrimary" type="button" @click="createFromDialog">Create</button>
+            </div>
+          </div>
+        </div>
 
       <div class="import__error" v-if="active && active.error">{{ active.error }}</div>
       <div class="import__error" v-else-if="active && store.state.lastError">{{ store.state.lastError }}</div>
@@ -141,6 +172,11 @@ export default {
     return {
       store: datasetStore,
       step: 1,
+
+      // Create dataset dialog
+      createDialogOpen: false,
+      newDataset: { name: `Dataset ${new Date().toLocaleString()}`, type: "image" },
+
       vec: { width: 64, height: 64, train_pct: 80, latent_dims: "8,16", dataset_name: "", img_mode: "RGB" },
       train: { epochs: 5 },
       tsne: { perplexities: "5, 10" },
@@ -235,10 +271,18 @@ export default {
       this.store.actions.setActiveDataset(e.target.value);
     },
 
-    async createNew() {
-      const name = window.prompt("Dataset name:", `Dataset ${new Date().toLocaleString()}`);
+    openCreateDialog() {
+      this.newDataset = { name: `Dataset ${new Date().toLocaleString()}`, type: "image" };
+      this.createDialogOpen = true;
+    },
+
+    async createFromDialog() {
+      const name = (this.newDataset.name || "").trim();
       if (!name) return;
-      await this.store.actions.createDataset(name);
+
+      await this.store.actions.createDataset({ name, type: this.newDataset.type });
+
+      this.createDialogOpen = false;
       this.step = 1;
     },
 
@@ -342,7 +386,7 @@ export default {
 .import__top { display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(0,0,0,0.12); border-radius: 12px; flex: 0 0 auto; }
 .import__datasetRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .import__label { margin-bottom: 0; font-weight: bold; }
-.import__select { min-width: 280px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
+.import__select { min-width: 140px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); }
 .import__btn { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); background: transparent; cursor: pointer; }
 .import__btn:hover { background: rgba(0,0,0,0.04); }
 .import__btnPrimary { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.06); cursor: pointer; }
@@ -375,5 +419,37 @@ export default {
   border-radius: 8px;
   border: 1px solid rgba(0,0,0,0.2);
 }
+
+.import__modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.import__modal {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 520px;
+  width: 92%;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.import__modalTitle {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.import__modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 
 </style>
