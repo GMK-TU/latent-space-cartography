@@ -23,6 +23,7 @@ export default {
         case DatasetStatus.COMPUTING: return "Computing";
         case DatasetStatus.VECTORS_READY: return "Vectors ready";
         case DatasetStatus.TRAINED: return "Trained";
+        case DatasetStatus.PCA_COMPLETED: return "PCA completed";
         case DatasetStatus.READY: return "Ready";
         case DatasetStatus.ERROR: return "Error";
         default: return this.status;

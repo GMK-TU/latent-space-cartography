@@ -191,7 +191,7 @@ const actions = {
       throw e;
     }
   },
-  async _startJobGeneric(datasetId, startFn, { weightStart = 35, weightEnd = 100, finalStatus = DatasetStatus.READY, startMessage = "Starting..." } = {}) {
+  async _startJobGeneric(datasetId, startFn, { weightStart, weightEnd, finalStatus = DatasetStatus.READY, startMessage = "Starting..." } = {}) {
       patch(datasetId, {
         status: DatasetStatus.COMPUTING,
         progress: Math.round(weightStart),
@@ -235,7 +235,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startVectorize(datasetId, params),
-        { weightStart: 35, weightEnd: 60, finalStatus: DatasetStatus.VECTORS_READY, startMessage: "Starting vectorization..." }
+        { weightStart: 25, weightEnd: 50, finalStatus: DatasetStatus.VECTORS_READY, startMessage: "Starting vectorization..." }
       );
     },
 
@@ -243,7 +243,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startTrain(datasetId, params),
-        { weightStart: 60, weightEnd: 90, finalStatus: DatasetStatus.TRAINED, startMessage: "Starting training..." }
+        { weightStart: 50, weightEnd: 80, finalStatus: DatasetStatus.TRAINED, startMessage: "Starting training..." }
       );
     },
 
@@ -251,7 +251,15 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startPca(datasetId, params),
-        { weightStart: 90, weightEnd: 100, finalStatus: DatasetStatus.READY, startMessage: "Starting PCA…" }
+        { weightStart: 80, weightEnd: 90, finalStatus: DatasetStatus.PCA_COMPLETED, startMessage: "Starting PCA..." }
+      );
+    },
+
+    async startTsne(datasetId, params) {
+      return actions._startJobGeneric(
+        datasetId,
+        () => api.startTsne(datasetId, params),
+        { weightStart: 90, weightEnd: 100, finalStatus: DatasetStatus.READY, startMessage: "Starting tSNE..." }
       );
     },
 
@@ -259,7 +267,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startPipeline(datasetId, params),
-        { weightStart: 35, weightEnd: 100, finalStatus: DatasetStatus.READY, startMessage: "Starting pipeline..." }
+        { weightStart: 25, weightEnd: 100, finalStatus: DatasetStatus.READY, startMessage: "Starting pipeline..." }
       );
     },
 

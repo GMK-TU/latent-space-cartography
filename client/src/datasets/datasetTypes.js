@@ -8,6 +8,7 @@ export const DatasetStatus = Object.freeze({
   COMPUTING: "computing",
   VECTORS_READY: "vectors_ready",
   TRAINED: "trained",
+  PCA_COMPLETED: "pca_completed",
   READY: "ready",
   ERROR: "error",
 });

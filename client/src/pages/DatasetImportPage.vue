@@ -94,10 +94,18 @@
           </button>
 
           <h3>PCA</h3>
-          <button class="import__btnPrimary" type="button"
-            :disabled="pcaDisabled"
-            @click="startPca">
+          <button class="import__btnPrimary" type="button" :disabled="pcaDisabled" @click="startPca">
             Run PCA
+          </button>
+
+          <h3>t-SNE</h3>
+          <div class="import__grid">
+            <label>Perplexities
+              <input type="text" v-model="tsne.perplexities" placeholder="e.g. 5, 10, 30 (smaller than dataset size)"/>
+            </label>
+          </div>
+          <button class="import__btnPrimary" type="button" :disabled="tsneDisabled" @click="startTsne">
+            Run t-SNE
           </button>
 
           <h3>All-in-one</h3>
@@ -135,6 +143,7 @@ export default {
       step: 1,
       vec: { width: 64, height: 64, train_pct: 80, latent_dims: "8,16", dataset_name: "", img_mode: "RGB" },
       train: { epochs: 5 },
+      tsne: { perplexities: "5, 10" },
     };
   },
   computed: {
@@ -174,6 +183,11 @@ export default {
       if (![DatasetStatus.VECTORS_READY, DatasetStatus.TRAINED].includes(this.active.status)) return true;
       return this.computingDisabled;
     },
+    tsneDisabled() {
+      if (!this.active) return true;
+      if (![DatasetStatus.TRAINED, DatasetStatus.READY].includes(this.active.status)) return true;
+      return this.computingDisabled;
+    },
     pipelineDisabled() {
       if (!this.active) return true;
       if (this.active.status !== DatasetStatus.CSV_UPLOADED) return true;
@@ -209,7 +223,7 @@ export default {
           if (s === DatasetStatus.RAW_UPLOADED || s === DatasetStatus.UPLOADING_CSV)
             result = 2;
           if (s === DatasetStatus.CSV_UPLOADED || s === DatasetStatus.COMPUTING || s === DatasetStatus.VECTORS_READY ||
-              s === DatasetStatus.TRAINED || s === DatasetStatus.READY || s === DatasetStatus.ERROR )
+              s === DatasetStatus.TRAINED || s === DatasetStatus.READY || s === DatasetStatus.PCA_COMPLETED || s === DatasetStatus.ERROR )
             result = 3;
       }
       console.log("inferStep returns " + result)
@@ -289,6 +303,9 @@ export default {
         },
         async startPca() {
           await this.store.actions.startPca(this.activeId, {});
+        },
+        async startTsne() {
+          await this.store.action.startTsne(this.activeId, { perplexities: this.tsne.perplexities });
         },
         async startPipeline() {
           await this.store.actions.startPipeline(this.activeId, {

@@ -152,6 +152,16 @@ export async function startPca(datasetId, params) {
   return jsonOrThrow(res);
 }
 
+export async function startTsne(datasetId, tsneParams = {}) {
+  const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/tsne`), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tsneParams),
+  });
+  return jsonOrThrow(res);
+}
+
 export async function startPipeline(datasetId, params) {
   const res = await fetch(url(`/api/datasets/${encodeURIComponent(datasetId)}/pipeline`), {
     method: "POST",
