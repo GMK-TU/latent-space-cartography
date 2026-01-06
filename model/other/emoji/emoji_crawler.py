@@ -13,19 +13,18 @@ from PIL import Image
 # ---------------- CONFIG ----------------
 
 EMOJI_NAMES = [
-    "grinning-face", 'grinning-face-with-smiling-eyes', 'beaming-face-with-smiling-eyes'
-    #'beaming-face-with-smiling-eyes', 'grinning-squinting-face', 'grinning-face-with-sweat',
-    #'rolling-on-the-floor-laughing', 'face-with-tears-of-joy', 'slightly-smiling-face',
-    #'upside-down-face', 'melting-face', 'winking-face', 'smiling-face-with-smiling-eyes',
-    #'smiling-face-with-halo', 'smiling-face-with-hearts', 'smiling-face-with-heart-eyes', 'star-struck',
-    #'face-blowing-a-kiss', 'kissing-face', 'smiling-face', 'kissing-face-with-closed-eyes',
-    # 'kissing-face-with-smiling-eyes', 'smiling-face-with-tear', 'face-savoring-food', 'face-with-tongue',
-    # 'winking-face-with-tongue', 'zany-face', 'squinting-face-with-tongue', 'money-mouth-face',
-    # 'smiling-face-with-open-hands', 'face-with-hand-over-mouth',
-    # 'face-with-open-eyes-and-hand-over-mouth', 'face-with-peeking-eye', 'shushing-face', 'thinking-face',
-    # 'saluting-face', 'zipper-mouth-face', 'face-with-raised-eyebrow', 'neutral-face',
-    # 'expressionless-face', 'face-without-mouth', 'dotted-line-face', 'face-in-clouds', 'smirking-face',
-    # 'unamused-face', 'face-with-rolling-eyes', 'grimacing-face', 'face-exhaling', 'lying-face',
+    "grinning-face", 'grinning-face-with-smiling-eyes', 'beaming-face-with-smiling-eyes',
+    'beaming-face-with-smiling-eyes', 'grinning-squinting-face', 'grinning-face-with-sweat',
+    'rolling-on-the-floor-laughing', 'face-with-tears-of-joy', 'slightly-smiling-face',
+    'upside-down-face', 'melting-face', 'winking-face', 'smiling-face-with-smiling-eyes',
+    'smiling-face-with-halo', 'smiling-face-with-hearts', 'smiling-face-with-heart-eyes', 'star-struck',
+    'face-blowing-a-kiss', 'kissing-face', 'smiling-face', 'kissing-face-with-closed-eyes',
+    'kissing-face-with-smiling-eyes', 'smiling-face-with-tear', 'face-savoring-food', 'face-with-tongue',
+    'winking-face-with-tongue', 'zany-face', 'squinting-face-with-tongue', 'money-mouth-face',
+    'face-with-hand-over-mouth', 'face-with-open-eyes-and-hand-over-mouth', 'face-with-peeking-eye', 'shushing-face',
+    'thinking-face', 'saluting-face', 'zipper-mouth-face', 'face-with-raised-eyebrow', 'neutral-face',
+    'expressionless-face', 'face-without-mouth', 'dotted-line-face', 'face-in-clouds', 'smirking-face', 'unamused-face',
+    'face-with-rolling-eyes', 'grimacing-face', 'face-exhaling', 'lying-face',
     # 'shaking-face', 'head-shaking-horizontally', 'head-shaking-vertically', 'relieved-face',
     # 'pensive-face', 'sleepy-face', 'drooling-face', 'sleeping-face', 'face-with-bags-under-eyes',
     # 'face-with-medical-mask', 'face-with-thermometer', 'face-with-head-bandage', 'nauseated-face',
@@ -68,31 +67,32 @@ EMOJI_NAMES = [
     # 'person:-curly-hair', 'woman:-white-hair', 'person:-white-hair', 'woman:-bald', 'person:-bald',
     # 'woman:-blond-hair'
 
-
 ]
 
 BASE_URLS = {
-    "samsung":   "https://emojipedia.org/samsung/one-ui-5.0",
-    "apple":     "https://emojipedia.org/apple/ios-18.4",
-    "google":    "https://emojipedia.org/google/17.0",
+    "samsung": "https://emojipedia.org/samsung/one-ui-5.0",
+    "apple": "https://emojipedia.org/apple/ios-18.4",
+    "google": "https://emojipedia.org/google/17.0",
     "microsoft": "https://emojipedia.org/microsoft/windows-11-24h2-august-2025-update",
 }
 
 IMG_SIZE = (64, 64)
 KEY_RAW = "emoji"
 OUT_H5_DEFAULT = "emoji.h5"
-OUT_ZIP_DEFAULT = "emoji_images.zip"
-OUT_CSV_DEFAULT = "emoji_meta.csv"
+OUT_ZIP_DEFAULT = "emoji_images (68).zip"
+OUT_CSV_DEFAULT = "emoji_meta (68).csv"
 SLEEP = 0.2
 
 session = requests.Session()
 session.headers["User-Agent"] = "emoji-dataset-builder/1.0"
+
 
 # ---------------- HELPERS ----------------
 
 def safe_slug(s: str) -> str:
     # keep it filesystem/zip friendly
     return "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in s.strip().lower())
+
 
 def extract_vendor_image(page_url: str):
     r = session.get(page_url, timeout=30)
@@ -110,6 +110,7 @@ def extract_vendor_image(page_url: str):
 
     return img["src"] if img else None
 
+
 def fetch_image_rgba(url: str) -> Image.Image:
     r = session.get(url, timeout=30)
     r.raise_for_status()
@@ -117,13 +118,16 @@ def fetch_image_rgba(url: str) -> Image.Image:
     img = img.resize(IMG_SIZE, Image.Resampling.LANCZOS)
     return img
 
+
 def image_to_vector(img: Image.Image) -> np.ndarray:
     return np.asarray(img, dtype=np.uint8).reshape(-1)
+
 
 def image_to_png_bytes(img: Image.Image) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
 
 # ---------------- MODES ----------------
 
@@ -171,6 +175,7 @@ def run_h5(out_h5: str):
 
     print(f"\nWrote {out_h5}: {X.shape[0]} images, vector length {X.shape[1]}")
 
+
 def run_zip_csv(out_zip: str, out_csv: str):
     """
     Writes:
@@ -216,8 +221,8 @@ def run_zip_csv(out_zip: str, out_csv: str):
 
                     rows.append({
                         "i": written,
-                        "key": image_key,         # <--- matches filename inside ZIP folder
-                        "zip_path": zip_path,           # full path in zip (useful for debugging)
+                        "key": image_key,  # <--- matches filename inside ZIP folder
+                        "zip_path": zip_path,  # full path in zip (useful for debugging)
                         "vendor": vendor,
                         "name": name,
                         "page_url": page_url,
@@ -248,6 +253,7 @@ def run_zip_csv(out_zip: str, out_csv: str):
     print(f"Wrote {out_csv}: {len(rows)} rows")
     print("\nJoin key: CSV.image_key == filename (inside ZIP).")
 
+
 # ---------------- CLI ----------------
 
 def main():
@@ -263,6 +269,7 @@ def main():
         run_h5(args.out_h5)
     else:
         run_zip_csv(args.out_zip, args.out_csv)
+
 
 if __name__ == "__main__":
     main()
