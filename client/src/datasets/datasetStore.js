@@ -235,7 +235,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startVectorize(datasetId, params),
-        { finalStatus: DatasetStatus.VECTORS_READY, startMessage: "Starting vectorization..." }
+        { weightStart: 35, weightEnd: 60, finalStatus: DatasetStatus.VECTORS_READY, startMessage: "Starting vectorization..." }
       );
     },
 
@@ -243,7 +243,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startTrain(datasetId, params),
-        { finalStatus: DatasetStatus.TRAINED, startMessage: "Starting training..." }
+        { weightStart: 60, weightEnd: 90, finalStatus: DatasetStatus.TRAINED, startMessage: "Starting training..." }
       );
     },
 
@@ -251,7 +251,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startPca(datasetId, params),
-        { finalStatus: DatasetStatus.READY, startMessage: "Starting PCA…" }
+        { weightStart: 90, weightEnd: 100, finalStatus: DatasetStatus.READY, startMessage: "Starting PCA…" }
       );
     },
 
@@ -259,7 +259,7 @@ const actions = {
       return actions._startJobGeneric(
         datasetId,
         () => api.startPipeline(datasetId, params),
-        { finalStatus: DatasetStatus.READY, startMessage: "Starting pipeline..." }
+        { weightStart: 35, weightEnd: 100, finalStatus: DatasetStatus.READY, startMessage: "Starting pipeline..." }
       );
     },
 

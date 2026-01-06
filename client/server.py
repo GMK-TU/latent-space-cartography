@@ -1406,6 +1406,10 @@ def delete_dataset(dataset_id):
     except Exception as e:
         return jsonify({"status": "error", "error": str(e), "dataset_id": dataset_id}), 500
 
+def _map_progress(job_prog, start, end):
+    job_prog = max(0, min(100, int(job_prog)))
+    return int(round(start + (end - start) * (job_prog / 100.0)))
+
 # Allowed modes for conversion
 IMAGE_MODES = {
     'RGB': 3,
@@ -1434,6 +1438,8 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
     # 1. Setup & Input Parsing
     # ---------------------------------------------------------
     try:
+        start_progress = int(params.get('start_progress', 35))
+        end_progress = int(params.get('end_progress', 60))
         target_w = int(params.get('width', 64))
         target_h = int(params.get('height', 64))
         pct = int(params.get('train_pct', 80))
@@ -1464,10 +1470,14 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
     raw_dir = os.path.join(root, 'raw')
     out_dir = os.path.join(root, 'img_vectors')
     os.makedirs(out_dir, exist_ok=True)
-    
+
+    def map_progress(job_prog):
+        return _map_progress(job_prog, start_progress, end_progress)
+
     # 2. Image Processing Loop
     # ---------------------------------------------------------
     dsdb.update_job(job_id, stage='processing_images', progress=0, message='Scanning images...')
+    dsdb.update_dataset(dataset_id, status='vectors_scanning_images', progress=map_progress(0), message='Generate vectors: Scanning images...')
     
     valid_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif'}
     filenames = sorted([
@@ -1523,6 +1533,8 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
             if idx % 10 == 0:
                 prog = int((idx / total_files) * 50) # First 50% of progress bar
                 dsdb.update_job(job_id, progress=prog, message=f'Processed {idx}/{total_files} images...')
+                dsdb.update_dataset(dataset_id, status='vectors_process_images', progress=map_progress(prog),
+                                    message=f'Generate vectors: Processed {idx}/{total_files} images...')
 
     except Exception as e:
         dsdb.update_job(job_id, status='error', message=f"Error processing {fname}: {str(e)}", done=True)
@@ -1534,6 +1546,8 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
     # 3. HDF5 Creation
     # ---------------------------------------------------------
     dsdb.update_job(job_id, stage='saving_hdf5', progress=60, message='Writing HDF5 file...')
+    dsdb.update_dataset(dataset_id, status='vectors_saving_hdf5', progress=map_progress(60),
+                        message=f'Generate vectors: Saving H5...')
     
     h5_filename = f"{dset_name}.h5"
     h5_path = os.path.join(out_dir, h5_filename)
@@ -1548,11 +1562,15 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
             dset.attrs['train_pct'] = pct
     except Exception as e:
         dsdb.update_job(job_id, status='error', message=f"HDF5 Write Failed: {str(e)}", done=True)
+        dsdb.update_dataset(dataset_id, status='error', progress=map_progress(0),
+                            message=f'Generate vectors: Failed to write HDF5...')
         return
 
     # 4. Config Generation
     # ---------------------------------------------------------
     dsdb.update_job(job_id, stage='generating_config', progress=80, message='Generating config...')
+    dsdb.update_dataset(dataset_id, status='vectors_generate_config', progress=map_progress(80),
+                        message=f'Generate vectors: Generate config...')
 
     # Calculate Split
     N = len(np_vectors)
@@ -1593,9 +1611,9 @@ schema_header = None
         final_msg += f" (Note: {len(warnings)} images cropped, e.g., {warnings[0]})"
         
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message=final_msg, done=True)
-    
+
     # Optionally mark dataset as "processed" in main registry
-    dsdb.update_dataset(dataset_id, status='vectors_ready', message='Vectors and Config generated.')
+    dsdb.update_dataset(dataset_id, status='vectors_ready', progress=map_progress(100), message='Vectors and Config generated.')
 
 def train_dataset_job(dataset_id, job_id, params, dsdb):
     """
@@ -1611,6 +1629,11 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
     """
     epochs = int(params.get('epochs', 100))
     target_dim = params.get('latent_dim') # If specific dim requested
+    start_progress = int(params.get('start_progress', 60))
+    end_progress = int(params.get('end_progress', 90))
+
+    def map_progress(job_prog):
+        return _map_progress(job_prog, start_progress, end_progress)
     
     root = f'./data/{dataset_id}'
     vectors_dir = os.path.join(root, 'img_vectors')
@@ -1631,6 +1654,8 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
         
     except Exception as e:
         dsdb.update_job(job_id, status='error', message=f"Config Error: {e}", done=True)
+        dsdb.update_dataset(dataset_id, status='error', progress=map_progress(0),
+                            message=f'Training model failed...')
         return
 
     # 2. Determine Dimensions to Train
@@ -1643,6 +1668,8 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
         dims_to_train = [64]
 
     dsdb.update_job(job_id, stage='training', progress=5, message=f'Starting training for dims: {dims_to_train}')
+    dsdb.update_dataset(dataset_id, status='train_start', progress=map_progress(5),
+                        message=f'Training model: Starting...')
 
     # 3. Loop through dimensions
     total_dims = len(dims_to_train)
@@ -1650,7 +1677,12 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
     try:
         for i, dim in enumerate(dims_to_train):
             msg = f"Training latent_dim={dim} ({i+1}/{total_dims})"
+
+            prog = int(5 + 95 * ((i + 1) / total_dims))
+
             dsdb.update_job(job_id, message=msg)
+            dsdb.update_dataset(dataset_id, status='train_model', progress=map_progress(prog),
+                                message=f'Training model: Dimension {i+1}/{total_dims}...')
             
             # Pass the loaded dset_config object explicitly
             train_vae(
@@ -1666,11 +1698,13 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
         import traceback
         traceback.print_exc()
         dsdb.update_job(job_id, status='error', message=f"Training Failed: {str(e)}", done=True)
+        dsdb.update_dataset(dataset_id, status='error', progress=map_progress(0),
+                            message=f'Training model: Failed...')
         return
 
     # 4. Finalize
     dsdb.update_dataset(dataset_id, status='trained', message='Model training complete.')
-    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='All models trained.', done=True)
+    dsdb.update_job(job_id, status='done', stage='done', progress=map_progress(100), message='All models trained.', done=True)
 
 def run_pca_job(dataset_id, job_id, params, dsdb):
     """
@@ -1689,6 +1723,12 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
         dsdb.update_job(job_id, status='error', message='No models directory found. Train a model first.', done=True)
         return
 
+    start_progress = int(params.get('start_progress', 90))
+    end_progress = int(params.get('end_progress', 100))
+
+    def map_progress(job_prog):
+        return _map_progress(job_prog, start_progress, end_progress)
+
     # Find directories like "64", "128", "32"
     trained_dims = [
         int(d) for d in os.listdir(models_root) 
@@ -1702,6 +1742,8 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
     trained_dims.sort()
     total = len(trained_dims)
     dsdb.update_job(job_id, stage='pca', progress=0, message=f'Found {total} dimensions to process: {trained_dims}')
+    dsdb.update_dataset(dataset_id, status='calc_pca', progress=map_progress(0),
+                        message=f'Computing PCA: Found {total} dimensions to process...')
 
     # 2. Process Each Dimension
     try:
@@ -1711,6 +1753,8 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
             # Calculate progress slice
             prog_start = int((index / total) * 100)
             dsdb.update_job(job_id, progress=prog_start, message=msg)
+            dsdb.update_dataset(dataset_id, status='calc_pca', progress=map_progress(prog_start),
+                                message=f'Computing PCA: {prog_start}% done...')
 
             # CALL THE PCA FUNCTION
             run_pca(dataset_id, dim)
@@ -1719,10 +1763,13 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
         import traceback
         traceback.print_exc()
         dsdb.update_job(job_id, status='error', message=f"PCA Failed on dim {dim}: {str(e)}", done=True)
+        dsdb.update_dataset(dataset_id, status='failed', progress=map_progress(0),
+                            message=f'PCA failed on dimension {dim}.')
         return
 
     # 3. Finalize
-    dsdb.update_dataset(dataset_id, status='ready', message='PCA complete. Dataset ready for visualization.')
+    dsdb.update_dataset(dataset_id, status='ready', progress=map_progress(100),
+                        message='PCA complete. Dataset ready for visualization.')
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message='PCA calculation done.', done=True)
 
 def run_tsne_job(dataset_id, job_id, params, dsdb):
@@ -1783,6 +1830,6 @@ if __name__ == '__main__':
     print('\033[92m' + 'Server started!')
     print('Navigate to http://127.0.0.1:5000/ in your browser')
     print('Press CTRL+C to stop' + '\033[0m')
-    app.run(debug=True)  # change to (host= '0.0.0.0') in production
-    #app.run(host= '0.0.0.0')
+    #app.run(debug=True)  # change to (host= '0.0.0.0') in production
+    app.run(host= '0.0.0.0')
 
