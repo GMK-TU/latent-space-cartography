@@ -1197,8 +1197,60 @@ def upload_metadata_csv(dataset_id):
         dsdb.update_dataset(dataset_id, status='error', progress=0, message='CSV import failed.', error=str(e))
         return jsonify({'error': str(e)}), 400
 
-    dsdb.update_dataset(dataset_id, status='csv_uploaded', progress=25, message='Metadata uploaded.', extra={'previewMeta': preview_meta, 'matchedPreview': matched_preview})
+    dsdb.update_dataset(dataset_id, status='csv_uploaded', progress=25, message='Metadata uploaded.',
+                        extra={'previewMeta': preview_meta, 'matchedPreview': matched_preview})
     return jsonify({'previewMeta': preview_meta, 'matchedPreview': matched_preview}), 200
+
+@app.route("/api/datasets/<dataset_id>/latent", methods=["POST"])
+def upload_latent(dataset_id):
+    dsdb = _require_ds_db()
+    if dsdb is None:
+        return jsonify({"error": "dataset db not initialized"}), 500
+
+    if "file" not in request.files:
+        return jsonify({"error": "Missing file"}), 400
+
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "Empty file"}), 400
+
+    latent_dim = request.form.get("latent_dim")
+    sample_percentage = request.form.get("sample_percentage", "10")
+
+    try:
+        latent_dim_int = int(latent_dim)
+        float(sample_percentage)
+    except Exception:
+        return jsonify({"error": "Invalid latent_dim or sample_percentage"}), 400
+
+    up_dir = f"./data/{dataset_id}/uploads"
+    os.makedirs(up_dir, exist_ok=True)
+    filename = secure_filename(f.filename)
+    saved_path = os.path.join(up_dir, filename)
+    f.save(saved_path)
+
+    params = {
+        "filepath": saved_path,
+        "latent_dim": latent_dim_int,
+        "sample_percentage": sample_percentage,
+    }
+
+    def worker(dataset_id, job_id, params):
+        dsdb_local = _require_ds_db()
+        if dsdb_local is None:
+            return
+
+        def fn():
+            run_import_text_job(dataset_id, job_id, params, dsdb_local)
+
+        _run_job_safely(dsdb_local, dataset_id, job_id, fn,
+                        start_status="computing",
+                        start_msg="Importing latent space…")
+
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params,
+                              job_message="Queued (latent import)...",
+                              job_stage="queued")
+    return jsonify({"jobId": job_id}), 200
 
 def _compute_worker(dataset_id, job_id):
     dsdb = _require_ds_db()
@@ -1926,11 +1978,11 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
         return
 
     # Setup Output Paths
-    out_dir = f'./data/{dataset_id}/text_vectors'
+    out_dir = f'./data/{dataset_id}/models/{latent_dim}'
     os.makedirs(out_dir, exist_ok=True)
-    
-    h5_path = os.path.join(out_dir, 'text_vectors.h5')
-    meta_path = os.path.join(out_dir, 'meta.csv')
+
+    h5_path = os.path.join(out_dir, 'latent_vectors.h5')
+    meta_path = os.path.join(f'./data/{dataset_id}', 'meta.csv')
 
     dsdb.update_job(job_id, stage='import', progress=0, message='Reading and parsing text file...')
 
@@ -1997,15 +2049,16 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
 
     try:
         with h5py.File(h5_path, 'w') as f:
-            f.create_dataset('vectors', data=numeric_data, compression="gzip")
-            f.create_dataset('indices', data=df_meta['i'].values)
+            f.create_dataset('latent', data=numeric_data, compression="gzip")
+            #f.create_dataset('indices', data=df_meta['i'].values) # not used?
             
     except Exception as e:
         dsdb.update_job(job_id, status='error', message=f'Failed to write HDF5: {str(e)}', done=True)
         return
 
     # Final Success
-    msg = f"Imported {len(df)} vectors. {bad_count} lines dropped. Saved to {h5_path}"
+    msg = f"Imported {len(df)} vectors. {bad_count} lines dropped. Saved to {h5_path}."
+    dsdb.update_dataset(dataset_id, status="latent_uploaded", progress=25, message="Latent space uploaded.")
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message=msg, done=True)
 
 if __name__ == '__main__':
