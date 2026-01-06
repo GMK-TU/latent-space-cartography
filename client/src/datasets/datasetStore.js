@@ -97,7 +97,7 @@ const actions = {
     }
   },
 
-  async uploadRawZip(datasetId, file, { weightStart = 0, weightEnd = 25 } = {}) {
+  async uploadRawZip(datasetId, file, { weightStart = 0, weightEnd = 15 } = {}) {
     patch(datasetId, {
       status: DatasetStatus.UPLOADING_RAW,
       progress: Math.max(0, Number(weightStart) || 0),
@@ -126,7 +126,7 @@ const actions = {
     }
   },
 
-  async uploadCsv(datasetId, file, { weightStart = 25, weightEnd = 35 } = {}) {
+  async uploadCsv(datasetId, file, { weightStart = 15, weightEnd = 25 } = {}) {
     patch(datasetId, {
       status: DatasetStatus.UPLOADING_CSV,
       progress: Math.max(0, Number(weightStart) || 0),
@@ -151,7 +151,7 @@ const actions = {
     }
   },
 
-  async startComputations(datasetId, { weightStart = 35, weightEnd = 100 } = {}) {
+  /*async startComputations(datasetId, { weightStart = 35, weightEnd = 100 } = {}) {
     patch(datasetId, {
       status: DatasetStatus.COMPUTING,
       progress: Math.round(weightStart),
@@ -167,7 +167,7 @@ const actions = {
       stop = subscribeJobProgress({
         jobId,
         onEvent: (evt) => {
-          const overall = lerp(weightStart, weightEnd, evt.overallProgress / 100);
+          const overall = evt.overallProgress;
           patch(datasetId, {
             status: evt.done ? DatasetStatus.READY : DatasetStatus.COMPUTING,
             progress: Math.round(overall),
@@ -190,7 +190,7 @@ const actions = {
       setError(e);
       throw e;
     }
-  },
+  },*/
   async _startJobGeneric(datasetId, startFn, { weightStart, weightEnd, finalStatus = DatasetStatus.READY, startMessage = "Starting..." } = {}) {
       patch(datasetId, {
         status: DatasetStatus.COMPUTING,
@@ -207,10 +207,9 @@ const actions = {
         stop = subscribeJobProgress({
           jobId,
           onEvent: (evt) => {
-            const overall = lerp(weightStart, weightEnd, evt.overallProgress / 100);
             patch(datasetId, {
               status: evt.done ? finalStatus : DatasetStatus.COMPUTING,
-              progress: Math.round(overall),
+              progress: Math.round(evt.overallProgress),
               message: evt.message || (evt.done ? "Done." : "Working..."),
               jobStage: evt.stage,
               jobStageProgress: evt.stageProgress,

@@ -17,14 +17,16 @@ from model import model
 
 class DbProgressCallback(Callback):
     """Updates the database with training progress per epoch."""
-    def __init__(self, dsdb, job_id, total_epochs, start_progress, end_progress):
+    def __init__(self, dsdb, job_id, total_epochs, progress_mapper):
         super().__init__()
         self.dsdb = dsdb
         self.job_id = job_id
         self.total_epochs = total_epochs
         # Map epoch 0-N to progress range (e.g., 20% to 80%)
-        self.p_start = start_progress
-        self.p_end = end_progress
+        self.p_start = 0
+        self.p_end = 90
+
+        self.progress_mapper = progress_mapper
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -36,7 +38,7 @@ class DbProgressCallback(Callback):
         val_loss = logs.get('val_loss', 0)
         msg = f"Epoch {epoch+1}/{self.total_epochs} - loss: {loss:.4f} - val_loss: {val_loss:.4f}"
         
-        self.dsdb.update_job(self.job_id, progress=current_prog, message=msg)
+        self.dsdb.update_job(self.job_id, progress=self.progress_mapper(current_prog), message=msg)
 
 class Visualizer(Callback):
     def __init__(self, x_test, encoder, generator, out_dir, img_dims, img_mode):
@@ -106,7 +108,7 @@ def load_data(h5_path, key, train_split):
         
     return x_all
 
-def train_vae(dataset_id, job_id, config, latent_dim, epochs, dsdb):
+def train_vae(dataset_id, job_id, config, latent_dim, epochs, dsdb, progress_mapper):
     """
     Main training function to be called by the job worker.
     """
@@ -163,8 +165,8 @@ def train_vae(dataset_id, job_id, config, latent_dim, epochs, dsdb):
     # Visualizer
     vis = Visualizer(x_test, encoder, generator, out_dir, vis_dims, config.img_mode)
     
-    # DB Updater (Runs from 10% to 90% of job progress)
-    db_cb = DbProgressCallback(dsdb, job_id, epochs, start_progress=10, end_progress=90)
+    # DB Updater (Runs from 0% to 100% of job progress)
+    db_cb = DbProgressCallback(dsdb, job_id, epochs, progress_mapper=progress_mapper)
 
     # 5. Fit
     print(f"Starting training for dim={latent_dim}...")
@@ -180,7 +182,7 @@ def train_vae(dataset_id, job_id, config, latent_dim, epochs, dsdb):
     # =========================================================
     # 6. Generate and Save Embeddings
     # =========================================================
-    dsdb.update_job(job_id, message="Generating latent vectors for all images...", progress=95)
+    dsdb.update_job(job_id, message="Generating latent vectors for all images...", progress=progress_mapper(95))
     
     # Reload best weights to ensure optimal encoding
     vae.load_weights(wpath)

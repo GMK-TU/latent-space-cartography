@@ -1226,9 +1226,9 @@ def _compute_worker(dataset_id, job_id):
     dsdb.update_job(job_id, status='done', stage='done', progress=100, message='Done.', done=True)
     dsdb.update_dataset(dataset_id, status='ready', progress=100, message='Ready.')
 
-def _start_job_thread(dsdb, dataset_id: str, worker_fn, *, params=None, job_message="Queued…", job_stage="queued"):
+def _start_job_thread(dsdb, dataset_id: str, worker_fn, *, params=None, job_message="Queued…", job_stage="queued", progress):
     job_id = uuid.uuid4().hex
-    dsdb.create_job(job_id=job_id, dataset_id=dataset_id, progress=0, message=job_message, stage=job_stage)
+    dsdb.create_job(job_id=job_id, dataset_id=dataset_id, progress=progress, message=job_message, stage=job_stage)
 
     # ensure params is serializable dict
     params = params or {}
@@ -1246,18 +1246,6 @@ def _run_job_safely(dsdb, dataset_id, job_id, fn, *, start_status="computing", s
         dsdb.update_dataset(dataset_id, status='error', message='Job failed.', error=str(e))
         raise
 
-@app.route('/api/datasets/<dataset_id>/compute', methods=['POST'])
-def start_compute(dataset_id):
-    dsdb = _require_ds_db()
-    if dsdb is None:
-        return jsonify({'error':'dataset db not initialized'}), 500
-
-    def worker(dataset_id, job_id, params):
-        _compute_worker(dataset_id, job_id)
-
-    job_id = _start_job_thread(dsdb, dataset_id, worker, job_message="Queued…", job_stage="queued")
-    return jsonify({'jobId': job_id}), 200
-
 @app.route('/api/datasets/<dataset_id>/vectorize', methods=['POST'])
 def start_vectorize(dataset_id):
     dsdb = _require_ds_db()
@@ -1274,7 +1262,8 @@ def start_vectorize(dataset_id):
             make_dataset_job(dataset_id, job_id, params, dsdb_local)
         _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Vectorizing…")
 
-    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (vectorize)…", job_stage="queued")
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (vectorize)...",
+                               job_stage="queued", progress=25)
     return jsonify({'jobId': job_id}), 200
 
 @app.route('/api/datasets/<dataset_id>/train', methods=['POST'])
@@ -1297,9 +1286,10 @@ def start_train(dataset_id):
             return
         def fn():
             train_dataset_job(dataset_id, job_id, params, dsdb_local)
-        _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Training…")
+        _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Training...")
 
-    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (train)…", job_stage="queued")
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (train)...",
+                               job_stage="queued", progress=50)
     return jsonify({'jobId': job_id}), 200
 
 @app.route('/api/datasets/<dataset_id>/pca', methods=['POST'])
@@ -1324,7 +1314,8 @@ def start_pca(dataset_id):
             run_pca_job(dataset_id, job_id, params, dsdb_local)
         _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Running PCA...")
 
-    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (PCA)...", job_stage="queued")
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (PCA)...",
+                               job_stage="queued", progress=80)
     return jsonify({'jobId': job_id}), 200
 
 @app.route('/api/datasets/<dataset_id>/tsne', methods=['POST'])
@@ -1349,7 +1340,8 @@ def start_tsne(dataset_id):
             run_tsne_job(dataset_id, job_id, params, dsdb_local)
         _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Running tSNE...")
 
-    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (tSNE)...", job_stage="queued")
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (tSNE)...",
+                               job_stage="queued", progress=90)
     return jsonify({'jobId': job_id}), 200
 
 
@@ -1371,14 +1363,15 @@ def start_pipeline(dataset_id):
             return
 
         def fn():
-            make_dataset_job(dataset_id, job_id, vec_params, dsdb_local)
-            train_dataset_job(dataset_id, job_id, train_params, dsdb_local)
-            run_pca_job(dataset_id, job_id, pca_params, dsdb_local)
-            run_tsne_job(dataset_id, job_id, tsne_params, dsdb_local)
+            make_dataset_job(dataset_id, job_id, vec_params, dsdb_local, finalize_job=False)
+            train_dataset_job(dataset_id, job_id, train_params, dsdb_local, finalize_job=False)
+            run_pca_job(dataset_id, job_id, pca_params, dsdb_local, finalize_job=False)
+            run_tsne_job(dataset_id, job_id, tsne_params, dsdb_local, finalize_job=True)
 
         _run_job_safely(dsdb_local, dataset_id, job_id, fn, start_status="computing", start_msg="Running pipeline…")
 
-    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (pipeline)…", job_stage="queued")
+    job_id = _start_job_thread(dsdb, dataset_id, worker, params=params, job_message="Queued (pipeline)...",
+                               job_stage="queued", progress=25)
     return jsonify({'jobId': job_id}), 200
 
 @app.route('/api/jobs/<job_id>', methods=['GET'])
@@ -1445,7 +1438,7 @@ IMAGE_MODES = {
     'L': 1  # Grayscale
 }
 
-def make_dataset_job(dataset_id, job_id, params, dsdb):
+def make_dataset_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
     """
     Worker function to process raw images into HDF5 and generate a config file.
     
@@ -1462,12 +1455,16 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
         }
         dsdb (DatasetsDB): Database instance for status updates.
     """
-    
+
+    start_progress = int(params.get('start_progress', 25))
+    end_progress = int(params.get('end_progress', 50))
+
+    def map_progress(job_prog):
+        return _map_progress(job_prog, start_progress, end_progress)
+
     # 1. Setup & Input Parsing
     # ---------------------------------------------------------
     try:
-        start_progress = int(params.get('start_progress', 25))
-        end_progress = int(params.get('end_progress', 50))
         target_w = int(params.get('width', 64))
         target_h = int(params.get('height', 64))
         pct = int(params.get('train_pct', 80))
@@ -1490,7 +1487,7 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
         target_chns = IMAGE_MODES[img_mode]
 
     except Exception as e:
-        dsdb.update_job(job_id, status='error', message=str(e), done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=str(e), done=True)
         return
 
     # Paths
@@ -1499,12 +1496,9 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
     out_dir = os.path.join(root, 'img_vectors')
     os.makedirs(out_dir, exist_ok=True)
 
-    def map_progress(job_prog):
-        return _map_progress(job_prog, start_progress, end_progress)
-
     # 2. Image Processing Loop
     # ---------------------------------------------------------
-    dsdb.update_job(job_id, stage='processing_images', progress=0, message='Scanning images...')
+    dsdb.update_job(job_id, stage='processing_images', progress=map_progress(0), message='Scanning images...')
     dsdb.update_dataset(dataset_id, status='vectors_scanning_images', progress=map_progress(0), message='Generate vectors: Scanning images...')
     
     valid_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif'}
@@ -1514,7 +1508,8 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
     ])
     
     if not filenames:
-        dsdb.update_job(job_id, status='error', message='No uploaded images were found. Your ZIP file must contain the images directly, not within a subfolder.', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message='No uploaded images were found. Your ZIP file must contain the images directly, not within a subfolder.', done=True)
         return
 
     vectors = []
@@ -1532,7 +1527,7 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
                 # Critical Check: Image smaller than target
                 if w < target_w or h < target_h:
                     error_msg = f"Image '{fname}' ({w}x{h}) is smaller than target ({target_w}x{target_h}). Processing aborted."
-                    dsdb.update_job(job_id, status='error', message=error_msg, done=True)
+                    dsdb.update_job(job_id, status='error', progress=map_progress(0), message=error_msg, done=True)
                     return
                 
                 # Center Crop Logic (if not exact match)
@@ -1560,12 +1555,13 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
             # Update Progress every 10 images
             if idx % 10 == 0:
                 prog = int((idx / total_files) * 50) # First 50% of progress bar
-                dsdb.update_job(job_id, progress=prog, message=f'Processed {idx}/{total_files} images...')
+                dsdb.update_job(job_id, progress=map_progress(prog), message=f'Processed {idx}/{total_files} images...')
                 dsdb.update_dataset(dataset_id, status='vectors_process_images', progress=map_progress(prog),
                                     message=f'Generate vectors: Processed {idx}/{total_files} images...')
 
     except Exception as e:
-        dsdb.update_job(job_id, status='error', message=f"Error processing {fname}: {str(e)}", done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message=f"Error processing {fname}: {str(e)}", done=True)
         return
 
     # Stack into one large array (N, H, W, C)
@@ -1573,7 +1569,7 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
 
     # 3. HDF5 Creation
     # ---------------------------------------------------------
-    dsdb.update_job(job_id, stage='saving_hdf5', progress=60, message='Writing HDF5 file...')
+    dsdb.update_job(job_id, stage='saving_hdf5', progress=map_progress(60), message='Writing HDF5 file...')
     dsdb.update_dataset(dataset_id, status='vectors_saving_hdf5', progress=map_progress(60),
                         message=f'Generate vectors: Saving H5...')
     
@@ -1596,7 +1592,7 @@ def make_dataset_job(dataset_id, job_id, params, dsdb):
 
     # 4. Config Generation
     # ---------------------------------------------------------
-    dsdb.update_job(job_id, stage='generating_config', progress=80, message='Generating config...')
+    dsdb.update_job(job_id, stage='generating_config', progress=map_progress(80), message='Generating config...')
     dsdb.update_dataset(dataset_id, status='vectors_generate_config', progress=map_progress(80),
                         message=f'Generate vectors: Generate config...')
 
@@ -1637,13 +1633,16 @@ schema_header = None
     final_msg = "Done."
     if warnings:
         final_msg += f" (Note: {len(warnings)} images cropped, e.g., {warnings[0]})"
-        
-    dsdb.update_job(job_id, status='done', stage='done', progress=100, message=final_msg, done=True)
+
+    status = 'done' if finalize_job else 'running'
+    done = True if finalize_job else False
+
+    dsdb.update_job(job_id, status=status, stage='done', progress=map_progress(100), message=final_msg, done=done)
 
     # Optionally mark dataset as "processed" in main registry
     dsdb.update_dataset(dataset_id, status='vectors_ready', progress=map_progress(100), message='Vectors and Config generated.')
 
-def train_dataset_job(dataset_id, job_id, params, dsdb):
+def train_dataset_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
     """
     Worker to run VAE training based on generated vectors/config.
     
@@ -1681,7 +1680,7 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
         spec.loader.exec_module(dset_config)
         
     except Exception as e:
-        dsdb.update_job(job_id, status='error', message=f"Config Error: {e}", done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=f"Config Error: {e}", done=True)
         dsdb.update_dataset(dataset_id, status='error', progress=map_progress(0),
                             message=f'Training model failed...')
         return
@@ -1695,7 +1694,7 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
     else:
         dims_to_train = [64]
 
-    dsdb.update_job(job_id, stage='training', progress=5, message=f'Starting training for dims: {dims_to_train}')
+    dsdb.update_job(job_id, stage='training', progress=map_progress(5), message=f'Starting training for dims: {dims_to_train}')
     dsdb.update_dataset(dataset_id, status='train_start', progress=map_progress(5),
                         message=f'Training model: Starting...')
 
@@ -1704,14 +1703,21 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
     
     try:
         for i, dim in enumerate(dims_to_train):
-            msg = f"Training latent_dim={dim} ({i+1}/{total_dims})"
+            msg = f"Training latent dimension={dim} ({i+1}/{total_dims})"
 
-            prog = int(5 + 95 * ((i + 1) / total_dims))
+            def progress(step):
+                return int(5 + (end_progress - 5) * ((step + 1) / total_dims))
 
-            dsdb.update_job(job_id, message=msg)
-            dsdb.update_dataset(dataset_id, status='train_model', progress=map_progress(prog),
+            loop_start_progress = progress(i - 1)
+            loop_end_progress = progress(i)
+
+            dsdb.update_job(job_id, message=msg, progress=map_progress(loop_start_progress))
+            dsdb.update_dataset(dataset_id, status='train_model', progress=map_progress(loop_start_progress),
                                 message=f'Training model: Dimension {i+1}/{total_dims}...')
-            
+
+            def internal_progress_mapper(progress):
+                return map_progress(int(loop_start_progress + (progress / 100.0) * (loop_end_progress - loop_start_progress)))
+
             # Pass the loaded dset_config object explicitly
             train_vae(
                 dataset_id=dataset_id, 
@@ -1719,22 +1725,29 @@ def train_dataset_job(dataset_id, job_id, params, dsdb):
                 config=dset_config, 
                 latent_dim=dim, 
                 epochs=epochs, 
-                dsdb=dsdb
+                dsdb=dsdb,
+                progress_mapper=internal_progress_mapper
             )
             
     except Exception as e:
         import traceback
         traceback.print_exc()
-        dsdb.update_job(job_id, status='error', message=f"Training Failed: {str(e)}", done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=f"Training Failed: {str(e)}",
+                        done=True)
         dsdb.update_dataset(dataset_id, status='error', progress=map_progress(0),
                             message=f'Training model: Failed...')
         return
 
     # 4. Finalize
     dsdb.update_dataset(dataset_id, status='trained', progress=map_progress(100), message='Model training complete.')
-    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='All models trained.', done=True)
 
-def run_pca_job(dataset_id, job_id, params, dsdb):
+    status = 'done' if finalize_job else 'running'
+    done = True if finalize_job else False
+
+    dsdb.update_job(job_id, status=status, stage='done', progress=map_progress(100),
+                    message='All models trained.', done=done)
+
+def run_pca_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
     """
     Worker to run PCA dimensionality reduction on trained vectors.
     
@@ -1743,19 +1756,20 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
         job_id (str): ID of the current job.
         params (dict): Empty dict (no args required).
     """
-    
-    # 1. Discover Trained Models
-    # We look into ./data/<id>/models/ for any subdirectories that are numbers
-    models_root = f'./data/{dataset_id}/models'
-    if not os.path.exists(models_root):
-        dsdb.update_job(job_id, status='error', message='No models directory found. Train a model first.', done=True)
-        return
 
     start_progress = int(params.get('start_progress', 80))
     end_progress = int(params.get('end_progress', 90))
 
     def map_progress(job_prog):
         return _map_progress(job_prog, start_progress, end_progress)
+
+    # 1. Discover Trained Models
+    # We look into ./data/<id>/models/ for any subdirectories that are numbers
+    models_root = f'./data/{dataset_id}/models'
+    if not os.path.exists(models_root):
+        dsdb.update_job(job_id, status='error', progress=_map_progress(0),
+                        message='No models directory found. Train a model first.', done=True)
+        return
 
     # Find directories like "64", "128", "32"
     trained_dims = [
@@ -1764,12 +1778,14 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
     ]
     
     if not trained_dims:
-        dsdb.update_job(job_id, status='error', message='No trained latent dimensions found.', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message='No trained latent dimensions found.', done=True)
         return
 
     trained_dims.sort()
     total = len(trained_dims)
-    dsdb.update_job(job_id, stage='pca', progress=0, message=f'Found {total} dimensions to process: {trained_dims}')
+    dsdb.update_job(job_id, stage='pca', progress=map_progress(0),
+                    message=f'Found {total} dimensions to process: {trained_dims}')
     dsdb.update_dataset(dataset_id, status='calc_pca', progress=map_progress(0),
                         message=f'Computing PCA: Found {total} dimensions to process...')
 
@@ -1780,7 +1796,7 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
             
             # Calculate progress slice
             prog_start = int((index / total) * 100)
-            dsdb.update_job(job_id, progress=prog_start, message=msg)
+            dsdb.update_job(job_id, progress=map_progress(prog_start), message=msg)
             dsdb.update_dataset(dataset_id, status='calc_pca', progress=map_progress(prog_start),
                                 message=f'Computing PCA: {prog_start}% done...')
 
@@ -1790,17 +1806,22 @@ def run_pca_job(dataset_id, job_id, params, dsdb):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        dsdb.update_job(job_id, status='error', message=f"PCA Failed on dim {dim}: {str(e)}", done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message=f"PCA Failed on dim {dim}: {str(e)}", done=True)
         dsdb.update_dataset(dataset_id, status='failed', progress=map_progress(0),
                             message=f'PCA failed on dimension {dim}.')
         return
 
     # 3. Finalize
-    dsdb.update_dataset(dataset_id, status='ready', progress=map_progress(100),
-                        message='PCA complete. Dataset ready for visualization.')
-    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='PCA calculation done.', done=True)
+    dsdb.update_dataset(dataset_id, status='ready', progress=map_progress(100), message='PCA complete. Dataset ready for visualization.')
 
-def run_tsne_job(dataset_id, job_id, params, dsdb):
+    status = 'done' if finalize_job else 'running'
+    done = True if finalize_job else False
+
+    dsdb.update_job(job_id, status=status, stage='done', progress=map_progress(100),
+                    message='PCA calculation done.', done=done)
+
+def run_tsne_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
     """
     Worker to calculate t-SNE for various perplexities on trained models.
     """
@@ -1814,7 +1835,8 @@ def run_tsne_job(dataset_id, job_id, params, dsdb):
     # 1. Discover Trained Models
     models_root = f'./data/{dataset_id}/models'
     if not os.path.exists(models_root):
-        dsdb.update_job(job_id, status='error', message='No models directory found.', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message='No models directory found.',
+                        done=True)
         return
 
     # Find directories (latent dims)
@@ -1824,18 +1846,23 @@ def run_tsne_job(dataset_id, job_id, params, dsdb):
     ]
     
     if not trained_dims:
-        dsdb.update_job(job_id, status='error', message='No trained latent dimensions found.', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message='No trained latent dimensions found.', done=True)
         return
 
     trained_dims.sort()
     
     # Define perplexities to run (Standard set from your original file)
-    perplexities = params.get("perplexities", [5])
+    perplexities = [5]
+
+    perplexities_str = params.get("perplexities")
+    if perplexities_str:
+        perplexities = [int(x.strip()) for x in perplexities_str.split(',') if x.strip()]
 
     total_steps = len(trained_dims) * len(perplexities)
     current_step = 0
 
-    dsdb.update_job(job_id, stage='tsne', progress=0, message=f'Starting t-SNE for dims: {trained_dims}')
+    dsdb.update_job(job_id, stage='tsne', progress=map_progress(0), message=f'Starting t-SNE for dims: {trained_dims}')
 
     # 2. Process Loop
     try:
@@ -1845,7 +1872,7 @@ def run_tsne_job(dataset_id, job_id, params, dsdb):
                 progress = int((current_step / total_steps) * 100)
                 
                 msg = f"Running t-SNE (Dim: {dim}, Perp: {perp})"
-                dsdb.update_job(job_id, progress=progress, message=msg)
+                dsdb.update_job(job_id, progress=map_progress(progress), message=msg)
                 dsdb.update_dataset(dataset_id, status='calc_tse', progress=map_progress(progress),
                                     message=f'Calculating tSNE. {progress}% done...')
                 
@@ -1855,13 +1882,17 @@ def run_tsne_job(dataset_id, job_id, params, dsdb):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        dsdb.update_job(job_id, status='error', message=f"t-SNE Failed: {str(e)}", done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=f"t-SNE Failed: {str(e)}", done=True)
         dsdb.update_dataset(dataset_id, status='error', progress=map_progress(0),
                             message=f'Calculating tSNE failed.')
         return
 
     # 3. Finalize
-    dsdb.update_job(job_id, status='done', stage='done', progress=100, message='t-SNE calculations complete.', done=True)
+    status = 'done' if finalize_job else 'running'
+    done = True if finalize_job else False
+
+    dsdb.update_job(job_id, status=status, stage='done', progress=map_progress(100),
+                    message='t-SNE calculations complete.', done=done)
     dsdb.update_dataset(dataset_id, status='ready', progress=map_progress(100), message=f'Calculating tSNE done.')
 
 if __name__ == '__main__':

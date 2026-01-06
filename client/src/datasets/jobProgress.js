@@ -60,7 +60,7 @@ export function subscribeJobProgress({ jobId, onEvent, onError, pollingMs = 1500
   }
 
   // Try SSE first (backend may not implement it; fallback on error)
-  try {
+  /*try {
     es = new EventSource(jobEventsUrl(jobId), { withCredentials: true });
     es.onmessage = (msg) => {
       try {
@@ -81,7 +81,9 @@ export function subscribeJobProgress({ jobId, onEvent, onError, pollingMs = 1500
     };
   } catch (e) {
     startPolling();
-  }
+  }*/
+
+  startPolling();
 
   return stop;
 }

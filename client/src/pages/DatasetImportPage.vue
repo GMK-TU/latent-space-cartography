@@ -312,6 +312,7 @@ export default {
             vectorize: { ...this.vec, dataset_name: this.vec.dataset_name || this.active.name },
             train: { ...this.train },
             pca: {},
+            tsne: { perplexities: this.tsne.perplexities }
           });
         },
         goToAnalogy() {
