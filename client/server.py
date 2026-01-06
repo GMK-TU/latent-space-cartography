@@ -1895,6 +1895,116 @@ def run_tsne_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
                     message='t-SNE calculations complete.', done=done)
     dsdb.update_dataset(dataset_id, status='ready', progress=map_progress(100), message=f'Calculating tSNE done.')
 
+def run_import_text_job(dataset_id, job_id, params, dsdb):
+    """
+    Imports a pre-computed text latent space (e.g., GloVe) from a text file.
+    
+    Params expected:
+      - filepath (str): Absolute path to the source .txt file.
+      - sample_percentage (int/float): 1-100, percentage of data to keep.
+      - latent_dim (int): The dimension size (e.g., 50, 100, 300).
+    """
+    
+    # 1. Validate Inputs
+    filepath = params.get('filepath')
+    try:
+        sample_pct = float(params.get('sample_percentage', 100))
+        latent_dim = int(params.get('latent_dim'))
+        
+        if not (1 <= sample_pct <= 100):
+            raise ValueError("Sample percentage must be between 1 and 100.")
+            
+    except (ValueError, TypeError) as e:
+        dsdb.update_job(job_id, status='error', message=f'Invalid parameters: {str(e)}', done=True)
+        return
+
+    if not filepath or not os.path.exists(filepath):
+        dsdb.update_job(job_id, status='error', message=f'Source file not found: {filepath}', done=True)
+        return
+
+    # Setup Output Paths
+    out_dir = f'./data/{dataset_id}/text_vectors'
+    os.makedirs(out_dir, exist_ok=True)
+    
+    h5_path = os.path.join(out_dir, 'text_vectors.h5')
+    meta_path = os.path.join(out_dir, 'meta.csv')
+
+    dsdb.update_job(job_id, stage='import', progress=0, message='Reading and parsing text file...')
+
+    # 2. Read and Parse Text File
+    good_rows = []
+    bad_count = 0
+    expected_parts = latent_dim + 1  # 1 for the word + N for dimensions
+
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+            total_lines = len(lines)
+            
+            for i, line in enumerate(lines):
+                if i % 5000 == 0:
+                    prog = int((i / total_lines) * 40) # First 40% of progress is reading
+                    dsdb.update_job(job_id, progress=prog)
+
+                parts = line.strip().split()
+                if len(parts) == expected_parts:
+                    try:
+                        # [word, float, float, ...]
+                        row = [parts[0]] + [float(x) for x in parts[1:]]
+                        good_rows.append(row)
+                    except ValueError:
+                        bad_count += 1
+                else:
+                    bad_count += 1
+
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', message=f'Error reading file: {str(e)}', done=True)
+        return
+
+    if not good_rows:
+        dsdb.update_job(job_id, status='error', message=f'No valid lines found matching dimension {latent_dim}.', done=True)
+        return
+
+    # 3. Create DataFrame
+    dsdb.update_job(job_id, progress=50, message=f'Processing {len(good_rows)} valid vectors...')
+    
+    cols = ['word'] + [f'c{i}' for i in range(latent_dim)]
+    df = pd.DataFrame(good_rows, columns=cols)
+    
+    # 4. Sampling
+    # Only run sampling if less than 100%. 
+    if sample_pct < 100:
+        n_samples = int(len(df) * (sample_pct / 100.0))
+        # Ensure we don't drop below 1 sample if the percentage is tiny but valid
+        n_samples = max(1, n_samples)
+        
+        dsdb.update_job(job_id, progress=60, message=f'Sampling {n_samples} vectors ({sample_pct}%)...')
+        df = df.sample(n=n_samples, random_state=42)
+    
+    # 5. Save Metadata (Words)
+    dsdb.update_job(job_id, progress=80, message='Saving metadata...')
+    df_meta = df.reset_index(drop=True)[['word']].rename(columns={'word': 'name'})
+    df_meta.insert(0, 'i', range(len(df_meta)))
+    df_meta.to_csv(meta_path, index=False)
+
+    # 6. Save Vectors to HDF5
+    dsdb.update_job(job_id, progress=90, message='Saving HDF5 vectors...')
+    
+    numeric_data = df.iloc[:, 1:].to_numpy(dtype=np.float32)
+
+    try:
+        with h5py.File(h5_path, 'w') as f:
+            f.create_dataset('vectors', data=numeric_data, compression="gzip")
+            f.create_dataset('indices', data=df_meta['i'].values)
+            
+    except Exception as e:
+        dsdb.update_job(job_id, status='error', message=f'Failed to write HDF5: {str(e)}', done=True)
+        return
+
+    # Final Success
+    msg = f"Imported {len(df)} vectors. {bad_count} lines dropped. Saved to {h5_path}"
+    dsdb.update_job(job_id, status='done', stage='done', progress=100, message=msg, done=True)
+
 if __name__ == '__main__':
     init_server()
     print('\033[92m' + 'Server started!')
