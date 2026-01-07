@@ -191,3 +191,10 @@ Data is managed in datasets.db (auto-created in the root).
 ### Configuration
 * **config_default.json:** Stores global defaults.
 * **Dataset Overrides:** Specific job parameters (like t-SNE perplexity) are saved per dataset in the SQLite database, ensuring reproducibility.
+
+## 7. Example videos
+### Image imports
+![](Images1.mp4)
+![](Images2.mp4)
+### Text imports
+![](Text.mp4)
