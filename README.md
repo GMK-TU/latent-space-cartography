@@ -1,4 +1,5 @@
 # Latent Space Cartography (Fork)
+![alt text](Screenshot1.png)
 
 ## 1. Project Overview
 
@@ -32,6 +33,7 @@ This fork re-engineers the project into a dynamic, full-stack web application.
     * **Live Progress:** Real-time feedback bars for vectorization, training, and projection jobs.
     * **Status Badges:** Visual indicators of data processing states.
 
+![alt text](Screenshot2.png)
 ---
 
 ## 3. Technical Stack
@@ -107,7 +109,7 @@ Open your browser and navigate to http://localhost:5000 (or the port specified b
 ## 5. User Workflows
 
 ### Workflow A: Image Latent Space (VAE Pipeline)
-
+![alt text](Screenshot3.png)
 This workflow transforms raw images into a navigable latent space using a Variational Autoencoder.
 
 #### 1. Data Ingestion
@@ -147,7 +149,7 @@ This workflow transforms raw images into a navigable latent space using a Variat
 ---
 
 ### Workflow B: Text Latent Space (NLP)
-
+![alt text](Screenshot4.png)
 This workflow visualizes semantic relationships using imported word vectors.
 
 #### 1. Job: Text Import
@@ -194,7 +196,13 @@ Data is managed in datasets.db (auto-created in the root).
 
 ## 7. Example videos
 ### Image imports
-<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Images1.mp4" title="Images1.mp4"></video>
-<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Images2.mp4" title="Images2.mp4"></video>
+https://github.com/GMK-TU/latent-space-cartography/blob/master/Images.mp4
+<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Images.mp4" title="Images.mp4"></video>
+
 ### Text imports
+https://github.com/GMK-TU/latent-space-cartography/blob/master/Text.mp4
 <video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Text.mp4" title="Text.mp4"></video>
+
+### Dataset Change
+https://github.com/GMK-TU/latent-space-cartography/blob/master/DatasetChange.mp4
+<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/DatasetChange.mp4" title="DatasetChange.mp4"></video>
