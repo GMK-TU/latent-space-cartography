@@ -194,7 +194,7 @@ Data is managed in datasets.db (auto-created in the root).
 
 ## 7. Example videos
 ### Image imports
-![](Images1.mp4)
-![](Images2.mp4)
+<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Images1.mp4" title="Images1.mp4"></video>
+<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Images2.mp4" title="Images2.mp4"></video>
 ### Text imports
-![](Text.mp4)
+<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Text.mp4" title="Text.mp4"></video>
