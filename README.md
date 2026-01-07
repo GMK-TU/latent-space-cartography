@@ -197,12 +197,9 @@ Data is managed in datasets.db (auto-created in the root).
 ## 7. Example videos
 ### Image imports
 https://github.com/GMK-TU/latent-space-cartography/blob/master/Images.mp4
-<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Images.mp4" title="Images.mp4"></video>
 
 ### Text imports
 https://github.com/GMK-TU/latent-space-cartography/blob/master/Text.mp4
-<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/Text.mp4" title="Text.mp4"></video>
 
 ### Dataset Change
 https://github.com/GMK-TU/latent-space-cartography/blob/master/DatasetChange.mp4
-<video controls src="https://github.com/GMK-TU/latent-space-cartography/blob/master/DatasetChange.mp4" title="DatasetChange.mp4"></video>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>README</title>
+	<style>
+		/* Basic styles for readability */
+		body {
+			font-family: sans-serif;
+			max-width: 800px;
+			margin: 2em auto;
+			padding: 0 1em;
+			line-height: 1.6;
+		}
+		/* Updated to include video so it scales responsibly */
+		img, video { max-width: 100%; height: auto; }
+		pre { background-color: #f4f4f4; padding: 1em; overflow-x: auto; }
+		code { font-family: monospace; }
+	</style>
+</head>
+<body>
+	<h1>Latent Space Cartography (Fork)</h1>
+<p><img src="Screenshot1.png" alt="alt text"></p>
+<h2>1. Project Overview</h2>
+<h3>Original Repository (uwdata)</h3>
+<p>The original Latent Space Cartography was a research tool designed to create and explore visual projections of vector space embeddings. While it contained core algorithms for projecting high-dimensional data, the workflow was static. Users had to manually prepare data and execute individual scripts with hardcoded parameters to generate visualizations. It primarily focused on image data, with no native code included for processing text embeddings.</p>
+<h3>Fork Objectives</h3>
+<p>This fork re-engineers the project into a dynamic, full-stack web application.</p>
+<ul>
+<li><strong>Dynamic &amp; Live Workflow (Primary Goal):</strong> The core objective was to eliminate the manual, script-based pipeline. In this fork, users interact with a live GUI to ingest data, train models, and generate projections in real-time without touching code or restarting the server.</li>
+<li><strong>Modernization:</strong> The codebase has been ported from Python 2.7 / TensorFlow 1.x to Python 3.12+ and TensorFlow 2.x / Keras 3.</li>
+<li><strong>Architecture Refactor:</strong> Replaced external MySQL dependencies with self-contained SQLite and implemented an asynchronous Job/Queue system to manage heavy computational tasks.</li>
+</ul>
+<hr>
+<h2>2. Key Differences &amp; Features</h2>
+<h3>Text Processing Evolution</h3>
+<ul>
+<li><strong>Original Upstream:</strong> Contained no logic for ingesting or processing text embeddings.</li>
+<li><strong>Fork:</strong> Implemented a generic text pipeline (import_text_job). The system supports importing any standard text embedding file (e.g., .txt with word vectors) via the UI, enabling users to analyze custom NLP models dynamically.</li>
+</ul>
+<h3>Dynamic Projection Jobs (t-SNE &amp; PCA)</h3>
+<ul>
+<li><strong>Static vs. Dynamic:</strong> While the original repository contained code for t-SNE and PCA, the logic was locked inside static scripts with hardcoded parameters.</li>
+<li><strong>Job Implementation:</strong> This fork refactors those algorithms into parameterized Jobs (run_pca_job, run_tsne_job).</li>
+<li><strong>User Control:</strong> Parameters that were previously static (e.g., t-SNE perplexity, iterations, or PCA dimensions) are now exposed in the UI, allowing users to tune projections experimentally for every dataset.</li>
+</ul>
+<h3>Additional Features</h3>
+<ul>
+<li><strong>Emoji Crawler:</strong> A dedicated testing tool (deploy/emoji/crawler.py) that scrapes and generates verifiable image datasets to validate the pipeline.</li>
+<li><strong>UI Overhaul:</strong>
+<ul>
+<li><strong>Dataset Picker:</strong> A dashboard for managing multiple datasets.</li>
+<li><strong>Live Progress:</strong> Real-time feedback bars for vectorization, training, and projection jobs.</li>
+<li><strong>Status Badges:</strong> Visual indicators of data processing states.</li>
+</ul>
+</li>
+</ul>
+<h2><img src="Screenshot2.png" alt="alt text"></h2>
+<h2>3. Technical Stack</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Component</th>
+<th style="text-align:left">Upstream (Original)</th>
+<th style="text-align:left">GMK-TU Fork</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Language</strong></td>
+<td style="text-align:left">Python 2.7</td>
+<td style="text-align:left"><strong>Python 3.12+</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Backend Framework</strong></td>
+<td style="text-align:left">Flask 0.x</td>
+<td style="text-align:left"><strong>Flask 3.x</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>ML Engine</strong></td>
+<td style="text-align:left">TensorFlow 1.x / Keras 2</td>
+<td style="text-align:left"><strong>TensorFlow 2.16+ / Keras 3</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Database</strong></td>
+<td style="text-align:left">MySQL</td>
+<td style="text-align:left"><strong>SQLite3</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Frontend</strong></td>
+<td style="text-align:left">Vue.js / Legacy Webpack</td>
+<td style="text-align:left"><strong>Vue.js 2.6 / Webpack 5</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Numerical Libs</strong></td>
+<td style="text-align:left">Numpy (Legacy)</td>
+<td style="text-align:left"><strong>NumPy, Pandas, Scikit-Learn 1.4+</strong></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>4. Installation &amp; Setup Guide</h2>
+<h3>Prerequisites</h3>
+<ul>
+<li><strong>Python:</strong> 3.10 or higher</li>
+<li><strong>Node.js:</strong> v18 or higher (LTS recommended)</li>
+</ul>
+<h3>Step 1: Backend Setup</h3>
+<ol>
+<li>Clone the repository and navigate to the root directory.</li>
+<li>Create a virtual environment:<pre><code class="language-bash">python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+</code></pre>
+</li>
+<li>Install dependencies:<pre><code class="language-bash">pip install -r requirements.txt
+</code></pre>
+</li>
+</ol>
+<h3>Step 2: Client Build &amp; Execution</h3>
+<p>The application logic, including the server entry point (<a href="http://server.py">server.py</a>), is located within the client folder in this fork.</p>
+<ol>
+<li>Navigate to the client directory:<pre><code class="language-bash">cd client
+</code></pre>
+</li>
+<li>Install Node dependencies:<pre><code class="language-bash">npm install
+</code></pre>
+</li>
+</ol>
+<p><strong>Option A: Production / Standard Use</strong>
+To build the static assets and run the standard server:</p>
+<ol>
+<li>Build the Vue.js frontend:<pre><code class="language-bash">npm run build
+</code></pre>
+<em>This compiles the Vue assets into the client/build/ directory.</em></li>
+<li>Execute the Python server:<pre><code class="language-bash">python server.py
+</code></pre>
+</li>
+</ol>
+<p><strong>Option B: Development</strong>
+To run the frontend with hot-reloading enabled during development:</p>
+<ol>
+<li>Execute the development server:<pre><code class="language-bash">npm run dev
+</code></pre>
+</li>
+<li>Ensure the Python backend is running separately (via python <a href="http://server.py">server.py</a> inside the client folder) to handle API requests.</li>
+</ol>
+<p><strong>Access:</strong>
+Open your browser and navigate to <a href="http://localhost:5000">http://localhost:5000</a> (or the port specified by the dev runner).</p>
+<hr>
+<h2>5. User Workflows</h2>
+<h3>Workflow A: Image Latent Space (VAE Pipeline)</h3>
+<p><img src="Screenshot3.png" alt="alt text">
+This workflow transforms raw images into a navigable latent space using a Variational Autoencoder.</p>
+<h4>1. Data Ingestion</h4>
+<ul>
+<li><strong>Action:</strong> Upload a ZIP file containing images via the “New Dataset” UI.</li>
+<li><strong>System Action:</strong> Unzips images to a staging area in ./data/{dataset_id}/.</li>
+</ul>
+<h4>2. Job: Vectorization</h4>
+<ul>
+<li><strong>Endpoint:</strong> server.make_dataset_job</li>
+<li><strong>Description:</strong> Resizes images and converts them to HDF5 arrays.</li>
+<li><strong>Parameters:</strong>
+<ul>
+<li>width / height: Target resolution (Standard: 64x64).</li>
+<li>train_pct: Training/Validation split (e.g., 0.8).</li>
+<li>img_mode: ‘RGB’ or ‘RGBA’.</li>
+</ul>
+</li>
+<li><strong>Output:</strong> ./data/{dataset_id}/img_vectors/</li>
+</ul>
+<h4>3. Job: Training</h4>
+<ul>
+<li><strong>Endpoint:</strong> server.train_dataset_job</li>
+<li><strong>Description:</strong> Trains the VAE on the vectorized data.</li>
+<li><strong>Parameters:</strong>
+<ul>
+<li>epochs: Number of passes (Default: 50+).</li>
+<li>latent_dim: Size of the vector space (e.g., 1024).</li>
+<li>filters: Convolutional depth.</li>
+<li>kernel_size: Convolutional kernel size.</li>
+</ul>
+</li>
+<li><strong>Output:</strong> ./data/{dataset_id}/models/ (Saved Keras models).</li>
+</ul>
+<h4>4. Job: Projection (Dynamic)</h4>
+<ul>
+<li><strong>Endpoints:</strong> server.run_pca_job / server.run_tsne_job</li>
+<li><strong>Description:</strong> Reduces latent vectors to 2D. Unlike the upstream repo, these are fully parameterized.</li>
+<li><strong>Parameters (PCA):</strong>
+<ul>
+<li>pca_dim: Target components.</li>
+</ul>
+</li>
+<li><strong>Parameters (t-SNE):</strong>
+<ul>
+<li>perplexity: Balance of local/global structure.</li>
+<li>learning_rate: Optimization step size.</li>
+<li>iterations: Total optimization steps.</li>
+</ul>
+</li>
+<li><strong>Output:</strong> ./data/{dataset_id}/projections/</li>
+</ul>
+<hr>
+<h3>Workflow B: Text Latent Space (NLP)</h3>
+<p><img src="Screenshot4.png" alt="alt text">
+This workflow visualizes semantic relationships using imported word vectors.</p>
+<h4>1. Job: Text Import</h4>
+<ul>
+<li><strong>Endpoint:</strong> run_text_import_job</li>
+<li><strong>Description:</strong> A generic importer that ingests raw text files where each line represents a word vector.</li>
+<li><strong>Input Format:</strong> Standard .txt (Space-separated values).<pre><code class="language-text">king 0.55 0.32 -0.11 ...
+queen 0.57 0.35 -0.09 ...
+</code></pre>
+</li>
+<li><strong>Parameters:</strong>
+<ul>
+<li>file: The source .txt file.</li>
+<li>latent_dim: Dimensionality of vectors (must match file).</li>
+<li>sample_percentage: (Optional) Fraction of data to import for testing.</li>
+</ul>
+</li>
+<li><strong>Output:</strong>
+<ul>
+<li>SQLite _vector tables (metadata).</li>
+<li>HDF5 storage (vector data).</li>
+</ul>
+</li>
+</ul>
+<h4>2. Visualization</h4>
+<ul>
+<li><strong>Action:</strong> Open the dataset in the UI.</li>
+<li><strong>Features:</strong> Perform vector arithmetic (Analogies) and inspect nearest neighbors in the 2D plot.</li>
+</ul>
+<hr>
+<h2>6. API &amp; Configuration Reference</h2>
+<h3>Job System API</h3>
+<p>The frontend triggers asynchronous jobs via these REST endpoints:</p>
+<ul>
+<li>POST /api/datasets/{id}/vectorize: Queues image processing.</li>
+<li>POST /api/datasets/{id}/train: Queues VAE training.</li>
+<li>POST /api/datasets/{id}/projection: Queues PCA or t-SNE.</li>
+<li>GET /api/jobs/{job_id}/events: Streams progress logs and percentage completion via Server-Sent Events (SSE).</li>
+</ul>
+<h3>Database Schema (SQLite)</h3>
+<p>Data is managed in datasets.db (auto-created in the root).</p>
+<ul>
+<li><strong>datasets Table:</strong> Tracks dataset ID, type (‘image’/‘text’), and pipeline status.</li>
+<li><strong>dataset_jobs Table:</strong> Logs execution history, job type (vectorize, train, tsne), and success/failure states.</li>
+</ul>
+<h3>Configuration</h3>
+<ul>
+<li><strong>config_default.json:</strong> Stores global defaults.</li>
+<li><strong>Dataset Overrides:</strong> Specific job parameters (like t-SNE perplexity) are saved per dataset in the SQLite database, ensuring reproducibility.</li>
+</ul>
+<h2>7. Example videos</h2>
+<h3>Image imports</h3>
+<video controls>
+  <source src="https://github.com/GMK-TU/latent-space-cartography/raw/master/Images.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+<h3>Text imports</h3>
+<video controls>
+  <source src="https://github.com/GMK-TU/latent-space-cartography/raw/master/Text.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+<h3>Dataset Change</h3>
+<video controls>
+  <source src="https://github.com/GMK-TU/latent-space-cartography/raw/master/DatasetChange.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+</body>
+</html>
