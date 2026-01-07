@@ -45,6 +45,7 @@ export function subscribeJobProgress({ jobId, onEvent, onError, pollingMs = 1500
 
   async function pollOnce() {
     try {
+      console.log("Polling for progress...")
       const raw = await getJobProgress(jobId);
       emit(raw);
       if (raw.done === true || raw.status === "done") stop();
@@ -58,30 +59,6 @@ export function subscribeJobProgress({ jobId, onEvent, onError, pollingMs = 1500
     pollOnce();
     timer = setInterval(pollOnce, pollingMs);
   }
-
-  // Try SSE first (backend may not implement it; fallback on error)
-  /*try {
-    es = new EventSource(jobEventsUrl(jobId), { withCredentials: true });
-    es.onmessage = (msg) => {
-      try {
-        const raw = JSON.parse(msg.data);
-        emit(raw);
-        if (raw.done === true || raw.status === "done") stop();
-      } catch (e) {
-        onError && onError(e);
-      }
-    };
-    es.onerror = () => {
-      // SSE not available / server closed; fallback
-      if (!stopped) {
-        try { es.close(); } catch (_) {}
-        es = null;
-        startPolling();
-      }
-    };
-  } catch (e) {
-    startPolling();
-  }*/
 
   startPolling();
 

@@ -236,9 +236,7 @@ export default {
       return this.store.state.datasets || [];
     },
     isLatent() {
-      let latent =  this.active && this.active.type === "latent";
-      console.log('isLatent: ' + latent + ' - ' + this.active.type + ', name: ' + this.active.name);
-      return latent;
+      return this.active && this.active.type === "latent";
     },
     activeId() {
       return this.store.state.activeDatasetId;
@@ -285,12 +283,15 @@ export default {
     tsneDisabled() {
       if (!this.active) return true;
 
+      console.log("tsne-disabled: " + this.active.status);
+
       if (this.isLatent) {
         // Simplest: allow once latent is uploaded (tsne can run; it can compute PCA internally or use existing PCA)
-        if (![DatasetStatus.LATENT_UPLOADED, DatasetStatus.READY].includes(this.active.status)) return true;
+        if (![DatasetStatus.LATENT_UPLOADED, DatasetStatus.PCA_COMPLETED, DatasetStatus.READY].includes(this.active.status)) return true;
         return this.computingDisabled;
       }
-      if (![DatasetStatus.TRAINED, DatasetStatus.READY].includes(this.active.status)) return true;
+
+      if (![DatasetStatus.TRAINED, DatasetStatus.PCA_COMPLETED, DatasetStatus.READY].includes(this.active.status)) return true;
       return this.computingDisabled;
     },
     pipelineDisabled() {
@@ -328,9 +329,9 @@ export default {
         if (this.isLatent) {
           if (s === DatasetStatus.EMPTY || s === DatasetStatus.UPLOADING_LATENT)
             result = 1;
-          if (s === DatasetStatus.LATENT_UPLOADED || s === DatasetStatus.COMPUTING)
-            result = 2;
-          if (s === DatasetStatus.READY || s === DatasetStatus.ERROR)
+          if (s === DatasetStatus.LATENT_UPLOADED || s === DatasetStatus.COMPUTING ||
+              s === DatasetStatus.PCA_COMPLETED || s === DatasetStatus.TSNE_COMPLETED ||
+              s === DatasetStatus.READY || s === DatasetStatus.ERROR)
             result = 2;
         } else {
           if (s === DatasetStatus.EMPTY || s === DatasetStatus.UPLOADING_RAW)
@@ -407,12 +408,6 @@ export default {
       e.target.value = "";
     },
 
-    async startCompute() {
-      if (!this.activeId) return;
-      await this.store.actions.startComputations(this.activeId);
-      this.step = 3;
-    },
-
     async deleteDataset() {
         if (!this.active) return;
 
@@ -452,7 +447,7 @@ export default {
           await this.store.actions.startPca(this.activeId, {});
         },
         async startTsne() {
-          await this.store.action.startTsne(this.activeId, { perplexities: this.tsne.perplexities });
+          await this.store.actions.startTsne(this.activeId, { perplexities: this.tsne.perplexities });
         },
         async startPipeline() {
           await this.store.actions.startPipeline(this.activeId, {

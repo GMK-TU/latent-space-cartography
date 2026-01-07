@@ -62,6 +62,7 @@ function setConfig(serverCfg) {
   }
 
   CONFIG = merged;
+  console.log("merged config is " + JSON.stringify(CONFIG))
 }
 
 

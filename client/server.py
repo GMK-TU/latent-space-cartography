@@ -946,7 +946,7 @@ def get_compare_page ():
 @app.route('/api/load_config', methods=['POST'])
 def load_config ():
     dsid, payload = _get_dataset_id_from_request()
-
+    ds = _require_ds_db().get_dataset(dsid)
     dims, caps = _discover_model_caps(dsid)
 
     cfg = {}
@@ -960,6 +960,11 @@ def load_config ():
     cfg['dataset_id'] = dsid
     cfg['dims'] = dims
     cfg['capabilities'] = caps
+    cfg['data_type'] = "image" if ds["type"] == "image" else "text"
+    cfg['dataset'] = ds["name"]
+    if ds['type'] == "latent":
+        cfg['rendering'] = { "ext": None, "dot_color": None }
+        cfg['schema'] = { "type": {}, "meta": ["i", "name"]}
 
     # Choose sensible defaults based on availability
     if dims and 'initial_dim' not in cfg:
@@ -1002,14 +1007,15 @@ def _compare_vectors ():
 # DATASET IMPORT ENDPOINTS
 # ==========================
 
+import threading
+_ds_db_local = threading.local()
+
 def _require_ds_db():
-    if _ds_db is None:
-        # best effort: initialize lazily
-        try:
-            return DatasetsDB(db.filename)
-        except Exception:
-            return None
-    return _ds_db
+    inst = getattr(_ds_db_local, "db", None)
+    if inst is None:
+        inst = DatasetsDB(db.filename)
+        _ds_db_local.db = inst
+    return inst
 
 import re
 
@@ -1354,12 +1360,17 @@ def start_pca(dataset_id):
         return jsonify({'error':'dataset db not initialized'}), 500
 
     ds = dsdb.get_dataset(dataset_id)
+
     if not ds:
         return jsonify({'error': 'dataset not found'}), 404
-    if ds.get("status") not in ("vectors_ready", "trained", "ready"):
+    if ds["type"] == "image" and ds.get("status") not in ("vectors_ready", "trained", "ready"):
         return jsonify({'error': 'dataset must be vectors_ready (or trained) before PCA'}), 400
+    if ds["type"] == "latent" and ds.get("status") not in ("latent_uploaded", "ready"):
+        return jsonify({'error': 'dataset must be latent_uploaded before PCA'}), 400
 
     params = request.get_json(silent=True) or {}
+
+    params["isLatent"] = ds["type"] == "latent"
 
     def worker(dataset_id, job_id, params):
         dsdb_local = _require_ds_db()
@@ -1822,7 +1833,7 @@ def run_pca_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
     # We look into ./data/<id>/models/ for any subdirectories that are numbers
     models_root = f'./data/{dataset_id}/models'
     if not os.path.exists(models_root):
-        dsdb.update_job(job_id, status='error', progress=_map_progress(0),
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
                         message='No models directory found. Train a model first.', done=True)
         return
 
@@ -1959,22 +1970,30 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
       - sample_percentage (int/float): 1-100, percentage of data to keep.
       - latent_dim (int): The dimension size (e.g., 50, 100, 300).
     """
-    
+
+    start_progress = int(params.get('start_progress', 25))
+    end_progress = int(params.get('end_progress', 80))
+
+    def map_progress(job_prog):
+        return _map_progress(job_prog, start_progress, end_progress)
+
     # 1. Validate Inputs
     filepath = params.get('filepath')
     try:
-        sample_pct = float(params.get('sample_percentage', 100))
+        sample_pct = float(params.get('sample_percentage', 5))
         latent_dim = int(params.get('latent_dim'))
         
         if not (1 <= sample_pct <= 100):
             raise ValueError("Sample percentage must be between 1 and 100.")
             
     except (ValueError, TypeError) as e:
-        dsdb.update_job(job_id, status='error', message=f'Invalid parameters: {str(e)}', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=f'Invalid parameters: {str(e)}',
+                        done=True)
         return
 
     if not filepath or not os.path.exists(filepath):
-        dsdb.update_job(job_id, status='error', message=f'Source file not found: {filepath}', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=f'Source file not found: {filepath}',
+                        done=True)
         return
 
     # Setup Output Paths
@@ -1984,7 +2003,7 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
     h5_path = os.path.join(out_dir, 'latent_vectors.h5')
     meta_path = os.path.join(f'./data/{dataset_id}', 'meta.csv')
 
-    dsdb.update_job(job_id, stage='import', progress=0, message='Reading and parsing text file...')
+    dsdb.update_job(job_id, stage='import', progress=map_progress(2), message='Reading and parsing text file...')
 
     # 2. Read and Parse Text File
     good_rows = []
@@ -1998,8 +2017,9 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
             
             for i, line in enumerate(lines):
                 if i % 5000 == 0:
-                    prog = int((i / total_lines) * 40) # First 40% of progress is reading
-                    dsdb.update_job(job_id, progress=prog)
+                    prog = 2 + int((i / total_lines) * 40) # First 40% of progress is reading
+                    msg = f"Importing latent space. Checking consistency. {prog}% done..."
+                    dsdb.update_job(job_id, progress=map_progress(prog), message=msg)
 
                 parts = line.strip().split()
                 if len(parts) == expected_parts:
@@ -2013,15 +2033,17 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
                     bad_count += 1
 
     except Exception as e:
-        dsdb.update_job(job_id, status='error', message=f'Error reading file: {str(e)}', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message=f'Error reading file: {str(e)}', done=True)
         return
 
     if not good_rows:
-        dsdb.update_job(job_id, status='error', message=f'No valid lines found matching dimension {latent_dim}.', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0),
+                        message=f'Error importing latent space. No valid lines found matching dimension {latent_dim}.', done=True)
         return
 
     # 3. Create DataFrame
-    dsdb.update_job(job_id, progress=50, message=f'Processing {len(good_rows)} valid vectors...')
+    dsdb.update_job(job_id, progress=map_progress(42), message=f'Processing {len(good_rows)} valid vectors...')
     
     cols = ['word'] + [f'c{i}' for i in range(latent_dim)]
     df = pd.DataFrame(good_rows, columns=cols)
@@ -2033,33 +2055,56 @@ def run_import_text_job(dataset_id, job_id, params, dsdb):
         # Ensure we don't drop below 1 sample if the percentage is tiny but valid
         n_samples = max(1, n_samples)
         
-        dsdb.update_job(job_id, progress=60, message=f'Sampling {n_samples} vectors ({sample_pct}%)...')
+        dsdb.update_job(job_id, progress=map_progress(45), message=f'Sampling {n_samples} vectors ({sample_pct}%)...')
         df = df.sample(n=n_samples, random_state=42)
     
     # 5. Save Metadata (Words)
-    dsdb.update_job(job_id, progress=80, message='Saving metadata...')
+    dsdb.update_job(job_id, progress=map_progress(60), message='Saving metadata...')
     df_meta = df.reset_index(drop=True)[['word']].rename(columns={'word': 'name'})
     df_meta.insert(0, 'i', range(len(df_meta)))
     df_meta.to_csv(meta_path, index=False)
 
+    # 5b. Import minimal metadata into SQLite (<dataset_id>_meta)
+    dsdb.update_job(job_id, progress=map_progress(65), message='Importing metadata into SQLite...')
+    try:
+        # raw_dir=None for latent datasets (no image matching needed)
+        preview_meta, matched_preview = import_metadata_csv(db.filename, dataset_id, meta_path, raw_dir=None)
+
+        # Optional: store a small preview on the dataset (nice for UI)
+        dsdb.update_dataset(
+            dataset_id,
+            extra={"previewMeta": preview_meta, "matchedPreview": matched_preview}
+        )
+    except Exception as e:
+        dsdb.update_job(
+            job_id,
+            status='error',
+            progress=map_progress(0),
+            message=f'Failed to import metadata into SQLite: {str(e)}',
+            done=True
+        )
+        dsdb.update_dataset(dataset_id, status='error', message='Metadata import failed.', error=str(e))
+        return
+
     # 6. Save Vectors to HDF5
-    dsdb.update_job(job_id, progress=90, message='Saving HDF5 vectors...')
+    dsdb.update_job(job_id, progress=map_progress(80), message='Saving HDF5 vectors...')
     
     numeric_data = df.iloc[:, 1:].to_numpy(dtype=np.float32)
 
     try:
         with h5py.File(h5_path, 'w') as f:
-            f.create_dataset('latent', data=numeric_data, compression="gzip")
-            #f.create_dataset('indices', data=df_meta['i'].values) # not used?
+            f.create_dataset('vectors', data=numeric_data, compression="gzip")
+            f.create_dataset('indices', data=np.arange(len(numeric_data)))
             
     except Exception as e:
-        dsdb.update_job(job_id, status='error', message=f'Failed to write HDF5: {str(e)}', done=True)
+        dsdb.update_job(job_id, status='error', progress=map_progress(0), message=f'Failed to write HDF5: {str(e)}', done=True)
         return
 
     # Final Success
-    msg = f"Imported {len(df)} vectors. {bad_count} lines dropped. Saved to {h5_path}."
-    dsdb.update_dataset(dataset_id, status="latent_uploaded", progress=25, message="Latent space uploaded.")
-    dsdb.update_job(job_id, status='done', stage='done', progress=100, message=msg, done=True)
+    msg = f"Imported {len(df)} vectors. {bad_count} inconsistent lines dropped. Saved to {h5_path}."
+    dsdb.update_dataset(dataset_id, status="latent_uploaded", progress=map_progress(100),
+                        message="Latent space processing terminated.")
+    dsdb.update_job(job_id, status='done', stage='done', progress=map_progress(100), message=msg, done=True)
 
 if __name__ == '__main__':
     init_server()

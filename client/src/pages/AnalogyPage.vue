@@ -220,6 +220,7 @@
   }
 
   function lets_load (callback) {
+    console.log("lets_load!")
     this.view_state = 0
 
     // reset chart style
@@ -299,7 +300,7 @@
         show_search: CONFIG.search.advanced,
         open_search: false,
         show_filter: CONFIG.filter,
-        loading: true,
+        loading: false,
         err: ''
       }
     },
@@ -347,7 +348,6 @@
     },
     mounted: function () {
       // register all the callback of the D3 component
-      customize_scatter.call(this, this.scatter)
       this.scatter.emitter.onSelected = (pts) => {
         this.brushed = pts
       }
@@ -581,6 +581,8 @@
         if (this.all_perplexity.length && !this.all_perplexity.includes(this.perplexity)) {
           this.perplexity = this.all_perplexity[0];
         }
+
+        customize_scatter.call(this, this.scatter)
 
         // 5) reset view + reload points using your existing logic
         this.view_state = 0;

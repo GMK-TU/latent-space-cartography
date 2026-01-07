@@ -481,6 +481,9 @@ class Store {
    * @returns {Promise}
    */
   getVectors () {
+    if (!this.datasetId) {
+      return Promise.resolve([]);   // or resolve(null), depending on caller
+    }
     return new Promise((resolve, reject) => {
       let payload = { dataset_id: this.datasetId }
 

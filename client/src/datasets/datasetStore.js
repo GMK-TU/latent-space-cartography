@@ -158,7 +158,7 @@ const actions = {
     patch(datasetId, {
       status: DatasetStatus.UPLOADING_LATENT,
       progress: Math.max(0, Number(weightStart) || 0),
-      message: "Uploading latent space…",
+      message: "Uploading latent space...",
       error: null,
     });
 
@@ -172,11 +172,12 @@ const actions = {
       });
 
       const jobId = res.jobId;
+      console.log("Received job id " + jobId)
 
       // 2) After upload: backend continues as a job → stream SSE progress
       patch(datasetId, {
         status: DatasetStatus.COMPUTING,
-        message: "Importing latent space…",
+        message: "Importing latent space (1)...",
         jobId,
       });
 
@@ -188,7 +189,7 @@ const actions = {
           patch(datasetId, {
             status: evt.done ? DatasetStatus.LATENT_UPLOADED : DatasetStatus.COMPUTING,
             progress: evt.done ? Math.round(weightEnd) : Math.round(mapped),
-            message: evt.message || (evt.done ? "Latent space uploaded." : "Importing latent space…"),
+            message: evt.message || (evt.done ? "Latent space uploaded." : "Importing latent space (2)..."),
             jobStage: evt.stage,
             jobStageProgress: evt.stageProgress,
             jobId,
