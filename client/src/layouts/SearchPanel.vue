@@ -144,9 +144,18 @@
     methods: {
       // when user clicks outside the search drawer to close it
       close (event) {
-        if (!(event.target === this.button || this.button.contains(event.target))) {
+        const btn = this.button
+
+        // If we don't have a button element yet, just close (or choose to return)
+        if (!btn || !event || !event.target) {
           this.$emit('close')
+          return
         }
+
+        // If click was on the opener button (or inside it), don't close
+        if (event.target === btn || (btn.contains && btn.contains(event.target))) return
+
+        this.$emit('close')
       },
 
       // Add result to the selected list
