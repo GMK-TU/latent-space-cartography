@@ -379,7 +379,7 @@ class Store {
    */
   saveLogoList (ids, alias = '') {
     return new Promise((resolve, reject) => {
-      let payload = {'alias': alias, ids: ids.join(',')}
+      let payload = {dataset_id: this.datasetId, 'alias': alias, ids: ids.join(',')}
 
       http.post('/api/save_group', payload)
         .then((response) => {
@@ -401,7 +401,7 @@ class Store {
    */
   getLogoLists () {
     return new Promise((resolve, reject) => {
-      http.post('/api/get_groups', {})
+      http.post('/api/get_groups', {dataset_id: this.datasetId, })
         .then((response) => {
           let msg = response['data']
 
@@ -459,7 +459,7 @@ class Store {
    */
   createVector (start, end, description = '') {
     return new Promise((resolve, reject) => {
-      let payload = {'start': start, 'end': end, 'desc': description}
+      let payload = {dataset_id: this.datasetId, 'start': start, 'end': end, 'desc': description}
 
       http.post('/api/create_vector', payload)
         .then((response) => {
@@ -517,7 +517,7 @@ class Store {
 
   deleteVector (vid) {
     return new Promise((resolve, reject) => {
-      let payload = {'id': vid}
+      let payload = {dataset_id: this.datasetId, 'id': vid}
 
       http.post('/api/delete_vector', payload)
         .then((response) => {
@@ -569,7 +569,7 @@ class Store {
 
     return new Promise((resolve, reject) => {
       let route = vectors.length ? '/api/plot_vectors' : '/api/plot_pairs'
-      let payload = {latent_dim: latent_dim, projection: projection,
+      let payload = {dataset_id: this.datasetId, latent_dim: latent_dim, projection: projection,
         perplexity: perp, pca_dim: nPC, matrix: matrix, mean: mean,
         n_neighbors:nn, min_dist:md, vectors: vectors, pairs: pairs}
 
@@ -608,7 +608,7 @@ class Store {
    */
   focusVector (latent_dim, start, end) {
     return new Promise((resolve, reject) => {
-      let payload = {groups: [start, end].join(','), latent_dim: latent_dim}
+      let payload = {dataset_id: this.datasetId, groups: [start, end].join(','), latent_dim: latent_dim}
 
       http.post('/api/focus_vector', payload)
         .then((response) => {
@@ -641,7 +641,7 @@ class Store {
    */
   vectorDiff (latent_dim, vid) {
     return new Promise((resolve, reject) => {
-      let payload = {vid: vid, latent_dim: latent_dim}
+      let payload = {dataset_id: this.datasetId, vid: vid, latent_dim: latent_dim}
 
       http.post('/api/vector_diff', payload)
         .then((response) => {
@@ -667,7 +667,7 @@ class Store {
    */
   applyAnalogy (latent_dim, pid, start, end) {
     return new Promise((resolve, reject) => {
-      let payload = {pid: pid, latent_dim: latent_dim, groups: `${start},${end}`,
+      let payload = {dataset_id: this.datasetId, pid: pid, latent_dim: latent_dim, groups: `${start},${end}`,
         projection: this._projection_matrix, mean: this._projection_mean}
 
       http.post('/api/apply_analogy', payload)
@@ -716,7 +716,7 @@ class Store {
   vectorScore (latent_dim, start, end, histogram = false) {
     return new Promise((resolve, reject) => {
       let payload = {groups: [start, end].join(','), latent_dim: latent_dim,
-        histogram: histogram}
+        histogram: histogram, dataset_id: this.datasetId}
 
       http.post('/api/vector_score', payload)
         .then((response) => {

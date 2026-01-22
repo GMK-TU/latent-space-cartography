@@ -18,10 +18,21 @@ class RandomCosine (object):
 
     # read latent space
     def read_ls (self, latent_dim):
-        rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(self.dset, latent_dim))
+        #rawpath = abs_path(f'./data/{}/models/{latent_dim}/latent_vectors.h5'.format(self.dset, latent_dim))
+        #with h5py.File(rawpath, 'r') as f:
+        #    X = np.asarray(f['latent'])
+        #return X
+
+        base_dir = f'./data/{self.dset}/models/{latent_dim}'
+        rawpath = os.path.join(base_dir, 'latent_vectors.h5')
+
         with h5py.File(rawpath, 'r') as f:
-            X = np.asarray(f['latent'])
-        return X
+            if 'vectors' not in f:
+                raise ValueError(f"Key 'vectors' not found in {rawpath}")
+            # Load all vectors into memory
+            data = f['vectors'][:]
+
+        return data
 
     # remove previous result
     def clean (self):
@@ -32,7 +43,19 @@ class RandomCosine (object):
     def random_pairs (self, latent_dim, num_pairs=2000):
         X = self.read_ls(latent_dim)
         n, _ = X.shape
-        ids = np.random.choice(n, size=(num_pairs, 2), replace=False)
+
+        max_pairs = n * (n - 1) // 2
+        num_pairs = min(num_pairs, max_pairs)
+
+        # all unique unordered pairs (i < j)
+        all_pairs = np.array(
+            [(i, j) for i in range(n) for j in range(i + 1, n)],
+            dtype=np.int64
+        )
+
+        # sample pairs without replacement
+        pick = np.random.choice(max_pairs, size=num_pairs, replace=False)
+        ids = all_pairs[pick]
 
         with h5py.File(self.out, 'w') as f:
             f.create_dataset('id', data=ids)

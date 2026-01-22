@@ -51,7 +51,7 @@
       </div>
 
       <!--Vector List-->
-      <div class="bd-vector-list p-3 pt-4" v-if="vectors.length">
+      <div class="bd-vector-list p-3 pt-4" v-if="datasetId && vectors.length">
         <div class="mb-3">
           <!--Title-->
           <div class="bd-subtitle text-uppercase">
@@ -211,7 +211,19 @@
       datasetId: {
         immediate: true,
         handler(newId) {
-          if (!newId) return;
+          // reset UI/state whenever dataset changes
+          this.vectors = []
+          this.focus = null
+          this.visible_vec = -1
+          this.hovered_vec = -1
+          this.start = null
+          this.end = null
+
+          if (!newId) {
+            this.loading_vectors = false;
+            return;
+          }
+          this.loading_vectors = true;
           this.fetchVectors(newId).then(() => {
             // register callback
             // plotting has to be after fetching

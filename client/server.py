@@ -103,15 +103,17 @@ def load_model (latent_dim):
     models[latent_dim] = decoder
 
 # read latent space
-def read_ls (latent_dim):
-    rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
-    df = pd.read_hdf(rawpath, key="latent")
-    X = np.copy(df.drop(columns=['word']))
+def read_ls (dataset_id, latent_dim):
+    base_dir = f'./data/{dataset_id}/models/{latent_dim}'
+    inpath = os.path.join(base_dir, 'latent_vectors.h5')
 
-    #    Original version. Check you do generlize
-    #    with h5py.File(rawpath, 'r') as f:
-    #        X = np.asarray(f['latent'])
-    return X
+    with h5py.File(inpath, 'r') as f:
+        if 'vectors' not in f:
+            raise ValueError(f"Key 'vectors' not found in {inpath}")
+        # Load all vectors into memory
+        data = f['vectors'][:]
+
+    return data
 
 def read_raw ():
     p_raw = abs_path('./data/{}/raw.h5'.format(dset))
@@ -258,9 +260,9 @@ def _project_axis (X, axis):
     return X_transformed, U, mean_
 
 # given a group ID, query the DB for image indices, as an int array
-def _get_group_indices (gid):
+def _get_group_indices (dsid, gid):
     # find image indices in each group
-    cursor, conn = db.execute('SELECT list FROM {}_group WHERE id={}'.format(dset, gid))
+    cursor, conn = db.execute('SELECT list FROM {}_group WHERE id={}'.format(dsid, gid))
     d = cursor.fetchone()[0]
     id_list = d.split(',')
 
@@ -269,8 +271,8 @@ def _get_group_indices (gid):
     return indices
 
 # compute the centroid of a group
-def _compute_group_centroid (X, gid):
-    indices = _get_group_indices(gid)
+def _compute_group_centroid (X, dsid, gid):
+    indices = _get_group_indices(dsid, gid)
     centroid = np.sum(X[indices], axis=0) / indices.shape[0]
 
     return centroid
@@ -300,7 +302,7 @@ def _knn_cosine (X, v, kn = 20):
     return dist[:, 0], idx[0]
 
 # compute the screen coordinates of given paths in a global projection
-def _project_path (X, projection, locs, params={}):
+def _project_path (dsid, X, projection, locs, params={}):
     # t-SNE: use the coordinate of nearest neighbors
     if projection == 'tsne':
         # use kd-tree to compute k nearest neighbors
@@ -312,7 +314,10 @@ def _project_path (X, projection, locs, params={}):
         # read t-SNE coordinates
         perp = params['perplexity']
         latent_dim = params['latent_dim']
-        tpath = abs_path('./data/{}/tsne/tsne{}_perp{}.h5'.format(dset, latent_dim, perp))
+
+        tpath = abs_path(f'./data/{dsid}/models/{latent_dim}/tsne_perp{perp}.h5')
+        #tpath = abs_path('./data/{}/tsne/tsne{}_perp{}.h5'.format(dsid, latent_dim, perp))
+
         with h5py.File(tpath, 'r') as f:
             Y = np.asarray(f['tsne']) # shape: (n, 2)
 
@@ -378,20 +383,20 @@ def _fit_umap (latent_dim, nn, dist):
 
 # pairwise cosine similarity between random pairs in the latent space
 # this is precomputed
-def _random_pairs (latent_dim):
-    fn = abs_path('./data/{}/pairs.h5'.format(dset))
+def _random_pairs (dsid, latent_dim):
+    fn = abs_path('./data/{}/pairs.h5'.format(dsid))
     with h5py.File(fn, 'r') as f:
         cs = np.asarray(f['cosine{}'.format(latent_dim)])
     return cs
 
 # relative formulation of pairwise cosine
-def _pair_alignment (latent_dim, gid):
+def _pair_alignment (dsid, latent_dim, gid):
     # read latent space
-    X = read_ls(latent_dim)
+    X = read_ls(dsid, latent_dim)
     
     # data points in start and end group
-    start = X[_get_group_indices(gid[0])]
-    end = X[_get_group_indices(gid[1])]
+    start = X[_get_group_indices(dsid, gid[0])]
+    end = X[_get_group_indices(dsid, gid[1])]
     n, _ = start.shape
     m, _ = end.shape
 
@@ -412,7 +417,7 @@ def _pair_alignment (latent_dim, gid):
     cs = cs[np.nonzero(cs)]
 
     # relative formulation: random pairs
-    csr = _random_pairs(latent_dim)
+    csr = _random_pairs(dsid, latent_dim)
 
     # effect size
     n1 = cs.shape[0]
@@ -592,6 +597,7 @@ def get_meta ():
 # apply analogy
 @app.route('/api/apply_analogy', methods=['POST'])
 def apply_analogy ():
+    dsid, payload = _get_dataset_id_from_request()
     latent_dim = request.json['latent_dim']
     pid = request.json['pid']
     gid = request.json['groups'].split(',')
@@ -600,17 +606,18 @@ def apply_analogy ():
     _mean = np.asarray(request.json['mean'], dtype=np.float64)
 
     # read latent space
-    rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dset, latent_dim))
+    X = read_ls(dsid, latent_dim)
+    #rawpath = abs_path('./data/{}/latent/latent{}.h5'.format(dsid, latent_dim))
 
-    df = pd.read_hdf(rawpath, key="latent")
-    X = np.copy(df.drop(columns=['word']))
+    #df = pd.read_hdf(rawpath, key="latent")
+    #X = np.copy(df.drop(columns=['word']))
 
 #   Original version. Check how to generalize.
 #    with h5py.File(rawpath, 'r') as f:
 #        X = np.asarray(f['latent'])
 
     # compute centroid
-    vec = _compute_group_centroid(X, gid[1]) - _compute_group_centroid(X, gid[0])
+    vec = _compute_group_centroid(X, dsid, gid[1]) - _compute_group_centroid(X, dsid, gid[0])
 
     start = X[int(pid)]
     end = start + vec
@@ -632,62 +639,65 @@ def apply_analogy ():
     loc = np.dot(loc - _mean, U.T)
     reply['locations'] = loc.tolist()
     reply['neighbors'] = count
-    reply['nearest'] = nearest
+    reply['nearest'] = [int(x) for x in nearest]
 
     return jsonify(reply), 200
 
 # visualize vectors together in a global projection
 @app.route('/api/plot_vectors', methods=['POST'])
 def plot_vectors ():
+    dsid, payload = _get_dataset_id_from_request()
     latent_dim = request.json['latent_dim']
     projection = request.json['projection']
     vectors = request.json['vectors'].split(';')
 
     # read latent space
-    X = read_ls(latent_dim)
+    X = read_ls(dsid, latent_dim)
 
     locs = []
     for gids in vectors:
         # compute centroid
         gid = gids.split(',')
-        start = _compute_group_centroid(X, gid[0])
-        end = _compute_group_centroid(X, gid[1])
+        start = _compute_group_centroid(X, dsid, gid[0])
+        end = _compute_group_centroid(X, dsid, gid[1])
         locs.append(_sample_vec(start, end, over=False))
-    res = _project_path(X, projection, locs, request.json)
+    res = _project_path(dsid, X, projection, locs, request.json)
 
     return jsonify({'status': 'success', 'data': res}), 200
 
 # visualize pairs together in a global projection
 @app.route('/api/plot_pairs', methods=['POST'])
 def plot_pairs ():
+    dsid, payload = _get_dataset_id_from_request()
     latent_dim = request.json['latent_dim']
     projection = request.json['projection']
     pairs = request.json['pairs'].split(';')
 
     # read latent space
-    X = read_ls(latent_dim)
+    X = read_ls(dsid, latent_dim)
 
     locs = []
     for pair in pairs:
         pair = [int(x) for x in pair.split(',')]
         locs.append(_sample_vec(X[pair[0]], X[pair[1]], over=False))
-    res = _project_path(X, projection, locs, request.json)
+    res = _project_path(dsid, X, projection, locs, request.json)
 
     return jsonify({'status': 'success', 'data': res}), 200
 
 # bring a vector to focus: interpolate along the path, and reproject all points
 @app.route('/api/focus_vector', methods=['POST'])
 def focus_vector():
+    dsid, payload = _get_dataset_id_from_request()
     latent_dim = request.json['latent_dim']
     gid = request.json['groups'].split(',')
     reply = {}
 
     # read latent space
-    X = read_ls(latent_dim)
+    X = read_ls(dsid, latent_dim)
     
     # compute centroid
-    start = _compute_group_centroid(X, gid[0])
-    end = _compute_group_centroid(X, gid[1])
+    start = _compute_group_centroid(X, dsid, gid[0])
+    end = _compute_group_centroid(X, dsid, gid[1])
     vec = end - start
 
     # project
@@ -716,43 +726,45 @@ def focus_vector():
     loc = np.dot(loc - _mean, U.T)
     reply['locations'] = loc.tolist()
     reply['neighbors'] = count
-    reply['nearest'] = nearest
+    reply['nearest'] = [int(x) for x in nearest]
     reply['outputs'] = recon
 
     return jsonify(reply), 200
 
 @app.route('/api/vector_diff', methods=['POST'])
 def vector_diff ():
+    dsid, payload = _get_dataset_id_from_request()
     latent_dim = request.json['latent_dim']
     vid = request.json['vid']
 
     # get all attribute vectors from database
-    query = 'SELECT a.start, a.end, a.id FROM {}_vector a'.format(dset)
+    query = 'SELECT a.start, a.end, a.id FROM {}_vector a'.format(dsid)
     cursor, conn = db.execute(query)
     data = [list(i) for i in cursor.fetchall()]
 
     # compute vector coordinates
-    X = read_ls(latent_dim)
+    X = read_ls(dsid, latent_dim)
     vecs = []
     idx = 0
     for i, v in enumerate(data):
         if v[2] == vid:
             idx = i
-        vecs.append(_compute_group_centroid(X, v[1]) - _compute_group_centroid(X, v[0]))
+        vecs.append(_compute_group_centroid(X, dsid, v[1]) - _compute_group_centroid(X, dsid, v[0]))
     vecs = np.asarray(vecs)
 
     # compute cosine similarity between this vector and all others
     cos = []
     for i in range(len(vecs)):
-        sim = cosine_similarity(vecs[i].reshape(1, -1), vecs[idx].reshape(1, -1))[0][0]
+        sim = float(cosine_similarity(vecs[i].reshape(1, -1), vecs[idx].reshape(1, -1))[0][0])
         cos.append({'id': data[i][2], 'cosine': sim})
 
     return jsonify({'data': cos}), 200
 
 @app.route('/api/all_vector_diff', methods=['POST'])
 def all_vector_diff ():
+    dsid, payload = _get_dataset_id_from_request()
     # get all attribute vectors from database
-    query = 'SELECT a.start, a.end FROM {}_vector a'.format(dset)
+    query = 'SELECT a.start, a.end FROM {}_vector a'.format(dsid)
     cursor, conn = db.execute(query)
     data = [list(i) for i in cursor.fetchall()]
 
@@ -762,7 +774,7 @@ def all_vector_diff ():
         X = read_ls(dim)
         arr = []
         for v in data:
-            arr.append(_compute_group_centroid(X, v[1]) - _compute_group_centroid(X, v[0]))
+            arr.append(_compute_group_centroid(X, dsid, v[1]) - _compute_group_centroid(X, dsid, v[0]))
         vecs[dim] = np.asarray(arr)
 
     # compute cosine similarity between each possible vector pair
@@ -787,10 +799,11 @@ def all_vector_diff ():
 # pairwise cosine similarity within an attribute vector
 @app.route('/api/vector_score', methods=['POST'])
 def vector_score ():
+    dsid, payload = _get_dataset_id_from_request()
     latent_dim = request.json['latent_dim']
     gid = request.json['groups'].split(',')
 
-    cs, csr, cohen, pooled = _pair_alignment(latent_dim, gid)
+    cs, csr, cohen, pooled = _pair_alignment(dsid, latent_dim, gid)
 
     # histograms
     hist, _ = np.histogram(cs, bins=np.arange(-1.0, 1.05, 0.1))
@@ -801,7 +814,7 @@ def vector_score ():
           .format(gid[0],gid[1], round(mean, 2), round(np.amax(cs), 2),  round(np.amin(cs), 2)))
     print('Cohen\'s d: {}, pooled sd: {}'.format(cohen, pooled))
  
-    reply = {'mean': mean, 'cohen': cohen, 'unit': pooled}
+    reply = {'mean': float(mean), 'cohen': float(cohen), 'unit': float(pooled)}
     if 'histogram' in request.json:
         reply['histogram'] = hist.tolist()
         reply['random'] = histr.tolist()
@@ -811,10 +824,12 @@ def vector_score ():
 # compute a number to represent how tight a cluster is
 @app.route('/api/cluster_score', methods=['POST'])
 def cluster_score ():
+    dsid, payload = _get_dataset_id_from_request()
+
     latent_dim = request.json['latent_dim']
     ids = request.json['ids']
 
-    X = read_ls(latent_dim)
+    X = read_ls(dsid, latent_dim)
     a = _pointwise_dist(X[ids])
     b = _pointwise_dist(X[ids], np.delete(X, ids, axis=0))
     print('Intra-cluster distance: {}, Inter-cluster distance: {}'.format(a, b))
@@ -844,6 +859,11 @@ def get_raw ():
 # save a group
 @app.route('/api/save_group', methods=['POST'])
 def save_group ():
+    dsid, payload = _get_dataset_id_from_request()
+
+    if not dsid or not 'ids' in request.json:
+        abort(400)
+
     if not request.json or not 'ids' in request.json:
         abort(400)
 
@@ -853,7 +873,7 @@ def save_group ():
     query = """
     INSERT INTO {}_group (alias, list)
     VALUES('{}', '{}')
-    """.format(dset, alias, ids)
+    """.format(dsid, alias, ids)
     print(query)
 
     cursor, conn = db.execute(query)
@@ -863,7 +883,9 @@ def save_group ():
 # get all groups
 @app.route('/api/get_groups', methods=['POST'])
 def get_groups ():
-    query = 'SELECT id, alias, list, timestamp FROM {}_group'.format(dset)
+    dsid, payload = _get_dataset_id_from_request()
+
+    query = 'SELECT id, alias, list, timestamp FROM {}_group'.format(dsid)
     cursor, conn = db.execute(query)
     data = [list(i) for i in cursor.fetchall()]
     return jsonify({'data': data[::-1]}), 200
@@ -882,12 +904,14 @@ def delete_group ():
 # create a vector
 @app.route('/api/create_vector', methods=['POST'])
 def create_vector():
+    dsid, payload = _get_dataset_id_from_request()
+
     start = request.json['start']
     end = request.json['end']
     desc = request.json['desc']
 
     query = """INSERT INTO {}_vector (start, end, description)
-    VALUES('{}', '{}', '{}')""".format(dset, start, end, desc)
+    VALUES('{}', '{}', '{}')""".format(dsid, start, end, desc)
     print(query)
 
     cursor, conn = db.execute(query)
@@ -913,9 +937,11 @@ def get_vectors ():
 # delete a vector
 @app.route('/api/delete_vector', methods=['POST'])
 def delete_vector ():
+    dsid, payload = _get_dataset_id_from_request()
+
     vid = request.json['id']
 
-    query = 'DELETE FROM {}_vector WHERE id={}'.format(dset, vid)
+    query = 'DELETE FROM {}_vector WHERE id={}'.format(dsid, vid)
     print(query)
 
     cursor, conn = db.execute(query)
@@ -1805,6 +1831,12 @@ def train_dataset_job(dataset_id, job_id, params, dsdb, *, finalize_job=True):
         return
 
     # 4. Finalize
+
+    from precompute import RandomCosine
+
+    rc = RandomCosine(dataset_id, dims_to_train)
+    rc.compute()
+
     dsdb.update_dataset(dataset_id, status='trained', progress=map_progress(100), message='Model training complete.')
 
     status = 'done' if finalize_job else 'running'
